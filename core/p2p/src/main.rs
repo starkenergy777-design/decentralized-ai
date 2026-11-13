@@ -15,7 +15,6 @@ struct Behaviour {
     ping: ping::Behaviour,
     task: request_response::cbor::Behaviour<TaskRequest, TaskResponse>,
 }
-
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct TaskRequest {
