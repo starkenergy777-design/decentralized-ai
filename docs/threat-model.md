@@ -1,0 +1,41 @@
+# Threat model (initial)
+
+## Assets
+
+- Node signing keys and device-local secrets.
+- Integrity and availability of the peer network.
+- Integrity of task results and model artifacts.
+- User privacy, especially biometric and device-attestation data.
+- User control of CPU, memory, storage, network, and battery use.
+- Integrity of governance and software update decisions.
+
+## Adversaries
+
+- Sybil operators creating many network identities.
+- Malicious peers sending malformed or oversized protocol messages.
+- Participants returning false compute results or poisoned model updates.
+- Compromised endpoints, rooted devices, replayed evidence, and relays that observe metadata.
+- Supply-chain compromise in dependencies, models, or build/release infrastructure.
+
+## Trust assumptions and unresolved questions
+
+- libp2p secure channels authenticate peer keys but do not prove a peer is one unique human or physical device.
+- Android hardware attestation depends on platform/vendor trust roots and can be unavailable or revoked.
+- A compromised Android device can falsify application-level observations; biometric liveness is not a guarantee of device integrity.
+- Universal one-physical-phone-one-vote is unresolved. Do not activate real voting based on app-only checks.
+- Bootstrap peers and relays may be unavailable or malicious; the protocol must not treat them as authorities.
+
+## Initial mitigations
+
+- Strict message size limits, validation, timeouts, and version negotiation.
+- Separate network identity from any future governance credential.
+- No transmission or persistence of raw biometric samples.
+- Keep governance simulation-only until uniqueness, recovery, privacy, and adversarial testing are reviewed.
+- Run untrusted tasks in an OS sandbox without access to keys or host credentials.
+- Verify artifacts by content hash and signatures; support rollback of staged updates.
+- Make resource sharing opt-in and interruptible.
+
+## Out of scope for the first prototype
+
+Production consensus, real voting eligibility, biometric anti-spoof guarantees, production key recovery, and safe arbitrary code execution are not delivered by the initial P2P prototype.
+
