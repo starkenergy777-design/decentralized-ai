@@ -321,6 +321,21 @@ pub async fn run_node(
                         if discovered_peer == peer_id {
                             continue;
                         }
+                        for address in registration.record.addresses() {
+                            let peer_suffix = Multiaddr::empty().with(
+                                libp2p::multiaddr::Protocol::P2p(discovered_peer.clone()),
+                            );
+                            let address = if address.ends_with(&peer_suffix) {
+                                address.clone()
+                            } else {
+                                address
+                                    .clone()
+                                    .with(libp2p::multiaddr::Protocol::P2p(
+                                        discovered_peer.clone(),
+                                    ))
+                            };
+                            swarm.add_peer_address(discovered_peer.clone(), address);
+                        }
                         report_event(
                             &events,
                             NodeEvent::PeerDiscovered(discovered_peer.to_string()),
