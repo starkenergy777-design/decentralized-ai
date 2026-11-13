@@ -4,7 +4,6 @@ members = ["core/p2p"]
 
 [workspace.package]
 edition = "2024"
-license = "UNLICENSED"
 rust-version = "1.88"
 
 [workspace.lints.rust]
