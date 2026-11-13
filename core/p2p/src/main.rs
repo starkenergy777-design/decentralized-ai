@@ -15,7 +15,7 @@ struct Behaviour {
     task: request_response::cbor::Behaviour<TaskRequest, TaskResponse>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 struct TaskRequest {
     id: u64,
     left: i64,
