@@ -19,6 +19,7 @@ struct RelayServerBehaviour {
     identify: identify::Behaviour,
     ping: ping::Behaviour,
     relay: relay::Behaviour,
+    rendezvous: libp2p::rendezvous::server::Behaviour,
 }
 
 #[tokio::main]
@@ -32,6 +33,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         identify::Config::new("/decentralized-ai/relay/1".to_owned(), identity.public());
     let relay_config = bounded_relay_config();
     let relay_behaviour = relay::Behaviour::new(peer_id.clone(), relay_config);
+    let rendezvous_behaviour = libp2p::rendezvous::server::Behaviour::new(
+        libp2p::rendezvous::server::Config::default()
+            .with_min_ttl(60)
+            .with_max_ttl(30 * 60)
+            .with_max_registration_per_peer(4)
+            .with_max_registration_total(10_000)
+            .with_max_stored_cookies(4_096),
+    );
 
     let mut swarm = libp2p::SwarmBuilder::with_existing_identity(identity)
         .with_tokio()
@@ -45,11 +54,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             identify: identify::Behaviour::new(identify_config),
             ping: ping::Behaviour::default(),
             relay: relay_behaviour,
+            rendezvous: rendezvous_behaviour,
         })?
         .build();
 
     let tcp_address = address_from_env("DAI_RELAY_TCP_LISTEN", "/ip4/0.0.0.0/tcp/4001")?;
-    let quic_address = address_from_env("DAI_RELAY_QUIC_LISTEN", "/ip4/0.0.0.0/udp/4001/quic-v1")?;
+    let quic_address =
+        address_from_env("DAI_RELAY_QUIC_LISTEN", "/ip4/0.0.0.0/udp/4001/quic-v1")?;
     swarm.listen_on(tcp_address)?;
     swarm.listen_on(quic_address)?;
 

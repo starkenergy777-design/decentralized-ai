@@ -1,6 +1,6 @@
 # Self-hosted relay node
 
-The `decentralized-ai-relay` binary is the first public-network infrastructure component. It accepts libp2p Circuit Relay v2 reservations over TCP and QUIC. It is not a DHT/bootstrap server, and the Android/desktop clients do not yet request relay reservations.
+The `decentralized-ai-relay` binary combines a Circuit Relay v2 service with a libp2p Rendezvous peer-discovery service over TCP and QUIC. Rendezvous registrations are limited to 4 per peer and 10,000 total, with bounded TTLs (60 seconds to 30 minutes) and a 4,096-cookie cache. It is not a DHT/bootstrap server, and the Android/desktop clients do not yet connect to this service or request relay reservations.
 
 ## Build and run with Docker
 
@@ -24,5 +24,7 @@ The named volume stores the relay's protobuf-encoded Ed25519 identity. Keep that
 - 128 circuits, at most 4 per peer.
 - 120 seconds and 8 MiB per circuit.
 - Rate limits on reservation and circuit requests per peer and source IP.
+- 10,000 Rendezvous registrations total, 4 per peer, and at most 4,096 cached discovery cookies.
+- Rendezvous registration TTL from 60 seconds to 30 minutes.
 
-These are prototype defaults. Monitor bandwidth and memory before running a public service. The relay forwards end-to-end encrypted libp2p streams but still sees peer identities, IP addresses, timing, and traffic volume. This initial listener uses TCP port 4001 and QUIC/UDP port 4001; a TLS/WebSocket port 443 fallback has not been implemented.
+These are prototype defaults. Monitor bandwidth and memory before running a public service. The relay forwards end-to-end encrypted libp2p streams but still sees peer identities, IP addresses, timing, and traffic volume. Rendezvous stores peer addresses temporarily to let other peers dial them. This initial listener uses TCP port 4001 and QUIC/UDP port 4001; a TLS/WebSocket port 443 fallback has not been implemented.
