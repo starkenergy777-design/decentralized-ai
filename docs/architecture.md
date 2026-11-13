@@ -37,7 +37,7 @@ Protocols will be versioned and bounded:
 - `/ai/attestation/1`: attestation evidence envelopes.
 - `/ai/update/1`: signed release metadata.
 
-These are proposed protocol identifiers, not deployed services. Messages must have size limits, explicit versioning, and validation before allocation or execution.
+These are proposed protocol identifiers, not deployed services. The current `/ai/task/1` prototype only accepts a typed checked-add request with fixed-size numeric fields; it never accepts executable code. Messages must have size limits, explicit versioning, and validation before allocation or execution.
 
 ## Compute and AI
 
@@ -50,4 +50,3 @@ Desktop nodes and unverified phones can contribute compute but cannot vote. A si
 ## Change process
 
 AI-generated code is a proposal. It must pass static analysis, dependency checks, isolated tests without network access or secrets, independent review, and governance approval for protected components. The AI cannot change its own safety rules, attestation policy, governance thresholds, or resource limits.
-
