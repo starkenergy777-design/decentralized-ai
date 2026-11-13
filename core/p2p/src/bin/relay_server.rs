@@ -28,10 +28,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .unwrap_or_else(|| "./data/relay-key.pb".into());
     let identity = load_or_create_identity(&key_path)?;
     let peer_id = PeerId::from(identity.public());
-    let identify_config = identify::Config::new(
-        "/decentralized-ai/relay/1".to_owned(),
-        identity.public(),
-    );
+    let identify_config =
+        identify::Config::new("/decentralized-ai/relay/1".to_owned(), identity.public());
     let relay_config = bounded_relay_config();
     let relay_behaviour = relay::Behaviour::new(peer_id.clone(), relay_config);
 
@@ -51,8 +49,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .build();
 
     let tcp_address = address_from_env("DAI_RELAY_TCP_LISTEN", "/ip4/0.0.0.0/tcp/4001")?;
-    let quic_address =
-        address_from_env("DAI_RELAY_QUIC_LISTEN", "/ip4/0.0.0.0/udp/4001/quic-v1")?;
+    let quic_address = address_from_env("DAI_RELAY_QUIC_LISTEN", "/ip4/0.0.0.0/udp/4001/quic-v1")?;
     swarm.listen_on(tcp_address)?;
     swarm.listen_on(quic_address)?;
 
