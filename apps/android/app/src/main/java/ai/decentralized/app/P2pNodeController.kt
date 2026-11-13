@@ -5,9 +5,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.ext.SdkExtensions
 import java.net.Inet4Address
 import java.util.concurrent.Executors
 
@@ -38,6 +41,7 @@ class P2pNodeController(
     private var closed = false
 
     private var currentUiState = P2pNodeUiState()
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     private var wifiOnly = true
     private var chargingOnly = true
@@ -87,15 +91,6 @@ class P2pNodeController(
             publish(P2pNodeUiState(P2pNodePhase.ERROR, it))
             return
         }
-        if (sendDemoAddition && peerAddress.isBlank()) {
-            publish(
-                P2pNodeUiState(
-                    P2pNodePhase.ERROR,
-                    "დემო შეკრების გასაგზავნად შეიყვანეთ სხვა კვანძის მისამართი.",
-                ),
-            )
-            return
-        }
         desiredRunning = true
         mainHandler.removeCallbacks(policyMonitor)
         mainHandler.postDelayed(policyMonitor, 10_000)
@@ -113,6 +108,7 @@ class P2pNodeController(
         executor.execute {
             if (!desiredRunning) return@execute
             try {
+                acquireMulticastLockIfRequired()
                 val identitySeed = AndroidPeerIdentityStore.loadOrCreate(context)
                 val response = try {
                     NativeTaskBridge.startNode(peerAddress.trim(), sendDemoAddition, identitySeed)
@@ -121,6 +117,7 @@ class P2pNodeController(
                 }
                 val parts = response.split('|', limit = 4)
                 if (parts.firstOrNull() != "ok" || parts.size != 4) {
+                    releaseMulticastLock()
                     if (desiredRunning) {
                         publish(
                             P2pNodeUiState(
@@ -135,6 +132,7 @@ class P2pNodeController(
                 val handle = parts[1].toLong()
                 if (!desiredRunning) {
                     NativeTaskBridge.stopNode(handle)
+                    releaseMulticastLock()
                     return@execute
                 }
                 activeNodeHandle = handle
@@ -142,14 +140,16 @@ class P2pNodeController(
                     P2pNodeUiState(
                         phase = P2pNodePhase.RUNNING,
                         message = if (peerAddress.isBlank()) {
-                            "კვანძი მუშაობს — მხოლოდ ეკრანის წინა პლანზე"
+                            "კვანძი მუშაობს წინა პლანზე და ლოკალურ ქსელში peer-ებს ეძებს"
                         } else if (sendDemoAddition) {
                             "კვანძი მუშაობს; peer-თან კავშირისა და 20 + 22 პასუხის მოლოდინშია"
                         } else {
                             "კვანძი მუშაობს; პირდაპირი დაკავშირების მცდელობა გაიგზავნა"
                         },
-                        taskStatus = if (sendDemoAddition) {
-                            "ველოდები peer-ის პასუხს"
+                taskStatus = if (sendDemoAddition && peerAddress.isBlank()) {
+                    "ველოდები ლოკალურ ქსელში peer-ის აღმოჩენას"
+                } else if (sendDemoAddition) {
+                    "ველოდები peer-ის პასუხს"
                         } else {
                             null
                         },
@@ -159,6 +159,7 @@ class P2pNodeController(
                 )
                 mainHandler.post(eventPoll)
             } catch (error: Exception) {
+                releaseMulticastLock()
                 if (desiredRunning) {
                     publish(
                         P2pNodeUiState(
@@ -189,6 +190,7 @@ class P2pNodeController(
             executor.execute {
                 activeNodeHandle?.let { NativeTaskBridge.stopNode(it) }
                 activeNodeHandle = null
+                releaseMulticastLock()
                 publish(P2pNodeUiState(message = finalMessage ?: "კვანძი გამორთულია"))
             }
         }
@@ -203,6 +205,7 @@ class P2pNodeController(
         executor.execute {
             activeNodeHandle?.let { NativeTaskBridge.stopNode(it) }
             activeNodeHandle = null
+            releaseMulticastLock()
         }
         executor.shutdown()
     }
@@ -240,6 +243,9 @@ class P2pNodeController(
             "connection_failed" -> currentUiState.copy(
                 message = "peer-თან კავშირი ვერ დამყარდა; შეამოწმეთ მისამართი და ქსელი",
                 connectedPeer = null,
+            )
+            "discovered" -> currentUiState.copy(
+                message = "ლოკალურ ქსელში peer მოიძებნა; კავშირის დამყარებას ვცდილობ",
             )
             "task_sent" -> currentUiState.copy(
                 taskStatus = "დემო ამოცანა გაიგზავნა (ID ${fields.getOrNull(1)})",
@@ -296,6 +302,31 @@ class P2pNodeController(
             }
         }
         return null
+    }
+
+    private fun acquireMulticastLockIfRequired() {
+        val multicastIsManagedInForeground = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            SdkExtensions.getExtensionVersion(Build.VERSION_CODES.TIRAMISU) >= 7
+        if (multicastIsManagedInForeground || multicastLock?.isHeld == true) return
+
+        val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivity.activeNetwork ?: return
+        if (connectivity.getNetworkCapabilities(network)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true
+        ) {
+            return
+        }
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            ?: return
+        multicastLock = wifiManager.createMulticastLock("decentralized-ai-mdns").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        multicastLock?.let { if (it.isHeld) it.release() }
+        multicastLock = null
     }
 
     private fun dialableListenAddress(address: String): String {

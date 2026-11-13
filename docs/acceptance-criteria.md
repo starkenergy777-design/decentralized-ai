@@ -15,6 +15,7 @@
 
 ## Later milestones
 
+- [ ] Android and desktop peers discover/connect on a shared LAN via mDNS; verify multicast-lock lifecycle, peer cap, and task exchange on real devices.
 - [ ] Android's Peer ID remains stable after app/device restart using a Keystore-managed encryption key, and changes only after identity storage is lost or reset.
 - [x] Android app builds a debug APK in CI.
 - [ ] Android's local demo invokes the shared Rust task protocol crate through JNI on supported ABIs.

@@ -49,9 +49,6 @@ fn start_managed_node(
                 .map_err(|error| format!("invalid peer multiaddress: {error}"))
         })
         .transpose()?;
-    if send_demo_addition && dial_address.is_none() {
-        return Err("enter a peer multiaddress before sending the demo task".to_owned());
-    }
     let id = NEXT_NODE_ID.fetch_add(1, Ordering::Relaxed);
     let pending_task = send_demo_addition.then_some(ProtocolTaskRequest {
         version: TASK_VERSION,
@@ -127,6 +124,7 @@ fn take_node_event(id: i64) -> String {
         Ok(NodeEvent::ConnectionFailed(peer_id)) => {
             format!("connection_failed|{}", peer_id.unwrap_or_default())
         }
+        Ok(NodeEvent::PeerDiscovered(peer_id)) => format!("discovered|{peer_id}"),
         Ok(NodeEvent::TaskSent(id)) => format!("task_sent|{id}"),
         Ok(NodeEvent::TaskFailed) => "task_failed".to_owned(),
         Ok(NodeEvent::TaskReceived(id)) => format!("task_received|{id}"),

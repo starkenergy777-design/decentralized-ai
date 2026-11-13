@@ -20,6 +20,7 @@
 ## Trust assumptions and unresolved questions
 
 - libp2p secure channels authenticate peer keys but do not prove a peer is one unique human or physical device.
+- Local mDNS advertisements reveal an opted-in node's Peer ID and network presence to devices on the same LAN; a discovered peer is not trusted until the libp2p secure connection authenticates it.
 - Android hardware attestation depends on platform/vendor trust roots and can be unavailable or revoked.
 - A compromised Android device can falsify application-level observations; biometric liveness is not a guarantee of device integrity.
 - Universal one-physical-phone-one-vote is unresolved. Do not activate real voting based on app-only checks.
@@ -36,6 +37,7 @@
 - Run untrusted tasks in an OS sandbox without access to keys or host credentials.
 - Verify artifacts by content hash and signatures; support rollback of staged updates.
 - Make resource sharing opt-in and interruptible.
+- Enable Android Wi-Fi multicast reception only while the foreground P2P node is running, and release the multicast lock immediately when it stops.
 
 ## Out of scope for the first prototype
 

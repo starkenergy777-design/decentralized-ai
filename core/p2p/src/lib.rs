@@ -1,8 +1,8 @@
-use std::{error::Error, time::Duration};
+use std::{collections::HashSet, error::Error, time::Duration};
 
 use futures::StreamExt;
 use libp2p::{
-    PeerId, StreamProtocol, identify, noise, ping, request_response,
+    PeerId, StreamProtocol, identify, mdns, noise, ping, request_response,
     request_response::cbor::codec::Codec as CborCodec,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
@@ -19,6 +19,7 @@ pub use decentralized_ai_task_protocol::{
 #[derive(NetworkBehaviour)]
 struct Behaviour {
     identify: identify::Behaviour,
+    mdns: mdns::tokio::Behaviour,
     ping: ping::Behaviour,
     task: request_response::cbor::Behaviour<TaskRequest, TaskResponse>,
 }
@@ -34,6 +35,7 @@ pub enum NodeEvent {
     PeerConnected(String),
     PeerDisconnected(String),
     ConnectionFailed(Option<String>),
+    PeerDiscovered(String),
     TaskSent(i64),
     TaskFailed,
     TaskReceived(i64),
@@ -45,6 +47,7 @@ pub enum NodeEvent {
 }
 
 const MAX_TASK_MESSAGE_BYTES: u64 = 256;
+const MAX_MDNS_PEER_CONNECTIONS: usize = 8;
 
 /// Runs one P2P node until its stop signal arrives or the swarm fails.
 pub async fn run_node(
@@ -66,6 +69,7 @@ pub async fn run_node(
     };
     let peer_id = PeerId::from(identity.public());
     let identify_config = identify::Config::new("/ai/peer/1".to_owned(), identity.public());
+    let mdns_behaviour = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id.clone())?;
     let task_codec = CborCodec::<TaskRequest, TaskResponse>::default()
         .set_request_size_maximum(MAX_TASK_MESSAGE_BYTES)
         .set_response_size_maximum(MAX_TASK_MESSAGE_BYTES);
@@ -88,6 +92,7 @@ pub async fn run_node(
         .with_quic()
         .with_behaviour(|_| Behaviour {
             identify: identify::Behaviour::new(identify_config),
+            mdns: mdns_behaviour,
             ping: ping::Behaviour::default(),
             task: task_behaviour,
         })?
@@ -100,10 +105,7 @@ pub async fn run_node(
     swarm.listen_on(quic_address)?;
     println!("node_id={peer_id}");
     println!("identity_lifetime={identity_lifetime}");
-
-    if pending_task.is_some() && dial_address.is_none() {
-        return Err("a peer multiaddress is required when using --add".into());
-    }
+    let mut dialing_discovered_peers = HashSet::new();
 
     if let Some(address) = dial_address {
         swarm.dial(address.clone())?;
@@ -138,6 +140,7 @@ pub async fn run_node(
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
+                dialing_discovered_peers.remove(&peer_id);
                 println!("connected={peer_id}");
                 report_event(&events, NodeEvent::PeerConnected(peer_id.to_string()));
                 if endpoint.is_dialer() {
@@ -154,11 +157,45 @@ pub async fn run_node(
                 report_event(&events, NodeEvent::PeerDisconnected(peer_id.to_string()));
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                if let Some(peer_id) = peer_id.as_ref() {
+                    dialing_discovered_peers.remove(peer_id);
+                }
                 eprintln!("connection_failed peer={peer_id:?} error={error}");
                 report_event(
                     &events,
                     NodeEvent::ConnectionFailed(peer_id.map(|peer| peer.to_string())),
                 );
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
+                for (peer_id, address) in peers {
+                    report_event(
+                        &events,
+                        NodeEvent::PeerDiscovered(peer_id.to_string()),
+                    );
+                    if swarm.is_connected(&peer_id)
+                        || dialing_discovered_peers.contains(&peer_id)
+                        || swarm.connected_peers().count() + dialing_discovered_peers.len()
+                            >= MAX_MDNS_PEER_CONNECTIONS
+                    {
+                        continue;
+                    }
+
+                    println!("peer_discovered={peer_id} address={address}; connecting");
+                    dialing_discovered_peers.insert(peer_id.clone());
+                    if let Err(error) = swarm.dial(peer_id.clone()) {
+                        dialing_discovered_peers.remove(&peer_id);
+                        eprintln!("discovered_peer_dial_failed peer={peer_id} error={error}");
+                        report_event(
+                            &events,
+                            NodeEvent::ConnectionFailed(Some(peer_id.to_string())),
+                        );
+                    }
+                }
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Expired(peers))) => {
+                for (peer_id, address) in peers {
+                    println!("peer_discovery_expired={peer_id} address={address}");
+                }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Task(event)) => match event {
                 request_response::Event::Message { peer, message, .. } => match message {

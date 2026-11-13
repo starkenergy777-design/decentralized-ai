@@ -149,7 +149,7 @@ private fun ResourceSettingsScreen(
         HorizontalDivider()
         Text("P2P კვანძი", style = MaterialTheme.typography.titleMedium)
         Text(
-            "ჩართვის შემდეგ ტელეფონი გახსნის ქსელურ კვანძს. Wi-Fi-ისა და დატენვის შეზღუდვები მოქმედებს; კვანძი მუშაობს მხოლოდ ამ ეკრანის წინა პლანზე ყოფნისას და არჩეული პირობების დაცვით.",
+            "ჩართვის შემდეგ ტელეფონი გახსნის ქსელურ კვანძს და იმავე Wi-Fi ქსელში peer-ებს ავტომატურად მოძებნის. ამ დროს Peer ID ლოკალურ ქსელში გამოჩნდება. კვანძი მუშაობს მხოლოდ ამ ეკრანის წინა პლანზე ყოფნისას და არჩეული პირობების დაცვით.",
             style = MaterialTheme.typography.bodyMedium,
         )
         OutlinedTextField(
@@ -164,7 +164,7 @@ private fun ResourceSettingsScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            "მიმღებ მოწყობილობაზე დატოვეთ მისამართი ცარიელი და გაუშვით კვანძი. გამგზავნზე ჩასვით მიმღების მისამართი და სურვილისამებრ მონიშნეთ 20 + 22 დემო ამოცანა. მოწყობილობებს პირდაპირი ქსელური კავშირი უნდა შეეძლოთ.",
+            "ერთ Wi-Fi ქსელში ორივე კვანძის ჩართვისას ისინი ავტომატურად იპოვიან ერთმანეთს. სურვილისამებრ ჩასვით პირდაპირ მისაწვდომი peer-ის მისამართი; მისამართის გარეშე დემო ამოცანა პირველ აღმოჩენილ peer-ს გაეგზავნება.",
             style = MaterialTheme.typography.bodySmall,
         )
         PolicySwitch(
@@ -190,8 +190,7 @@ private fun ResourceSettingsScreen(
                 }
             },
             enabled = participating && cpuBudget > 0 && p2pState.phase != P2pNodePhase.STARTING &&
-                p2pState.phase != P2pNodePhase.STOPPING &&
-                (!sendDemoAddition || peerAddress.isNotBlank()),
+                p2pState.phase != P2pNodePhase.STOPPING,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (p2pState.phase == P2pNodePhase.RUNNING) "კვანძის გაჩერება" else "P2P კვანძის დაწყება")
@@ -215,7 +214,7 @@ private fun ResourceSettingsScreen(
             }
         }
         Text(
-            "ეს სატესტო კვანძია: მისამართი შეიძლება NAT-ის გამო გარედან მიუწვდომელი იყოს; აღმოჩენა/რელე ჯერ არ გვაქვს. ამ ეტაპზე კვანძები ასრულებენ მხოლოდ მცირე არითმეტიკულ პროტოკოლს — AI მოდელის განაწილებული inference ჯერ არ არის ჩართული.",
+            "ადგილობრივი აღმოჩენა მუშაობს მხოლოდ ერთ LAN/Wi-Fi ქსელში; სხვა ქსელებს შორის NAT traversal და relay ჯერ არ არის. ამ ეტაპზე კვანძები ასრულებენ მხოლოდ მცირე არითმეტიკულ პროტოკოლს — AI მოდელის განაწილებული inference ჯერ არ არის ჩართული.",
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
