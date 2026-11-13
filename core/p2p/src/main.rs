@@ -7,7 +7,6 @@ use libp2p::{
     tcp, yamux,
 };
 
-#[allow(unreachable_code)]
 #[derive(NetworkBehaviour)]
 struct NodeBehaviour {
     identify: identify::Behaviour,
