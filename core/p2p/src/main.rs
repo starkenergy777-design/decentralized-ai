@@ -75,8 +75,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let dial_address = args.next();
     let mut pending_task = match args.next().as_deref() {
         Some("--add") => {
-            let left = args.next().ok_or("--add requires two integer operands")?.parse()?;
-            let right = args.next().ok_or("--add requires two integer operands")?.parse()?;
+            let left = args
+                .next()
+                .ok_or("--add requires two integer operands")?
+                .parse()?;
+            let right = args
+                .next()
+                .ok_or("--add requires two integer operands")?
+                .parse()?;
             Some(TaskRequest { id: 1, left, right })
         }
         Some(other) => return Err(format!("unknown option: {other}").into()),
@@ -135,7 +141,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     peer,
                     request_id,
                     error,
-                } => eprintln!("task_request_failed request={request_id:?} peer={peer} error={error}"),
+                } => eprintln!(
+                    "task_request_failed request={request_id:?} peer={peer} error={error}"
+                ),
                 request_response::Event::InboundFailure { peer, error, .. } => {
                     eprintln!("task_request_rejected peer={peer} error={error}");
                 }
