@@ -3,7 +3,7 @@ use std::{error::Error, time::Duration};
 use futures::StreamExt;
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol, identify, noise, ping, request_response,
-    request_response::cbor::Codec as CborCodec,
+    request_response::cbor::codec::Codec as CborCodec,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
 };
@@ -247,3 +247,4 @@ mod tests {
         assert_eq!(response.error, Some(super::ERROR_OVERFLOW));
     }
 }
+
