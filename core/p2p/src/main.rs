@@ -2,9 +2,9 @@ use std::{error::Error, time::Duration};
 
 use futures::StreamExt;
 use libp2p::{
-    identify, noise, ping, tcp, yamux,
+    Multiaddr, PeerId, identify, noise, ping,
     swarm::{NetworkBehaviour, SwarmEvent},
-    Multiaddr, PeerId,
+    tcp, yamux,
 };
 
 #[derive(NetworkBehaviour)]
@@ -31,9 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             identify: identify::Behaviour::new(identify_config),
             ping: ping::Behaviour::default(),
         })?
-        .with_swarm_config(|cfg| {
-            cfg.with_idle_connection_timeout(Duration::from_secs(60))
-        })
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
     let tcp_address: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse()?;
@@ -48,7 +46,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         swarm.dial(address.clone())?;
         println!("dialing={address}");
     }
-
     loop {
         match swarm.select_next_some().await {
             SwarmEvent::NewListenAddr { address, .. } => {
