@@ -14,6 +14,9 @@
 
 ## Later milestones
 
+- [ ] Android app builds a debug APK in CI.
+- [ ] Resource preference screen defaults compute opt-in to off and persists the user's selected budgets locally.
+- [ ] Background compute enforces the selected limits, responds to thermal/battery/network constraints, and can be stopped immediately.
 - [ ] Task sandboxing, cancellation, resource quotas, and independent result verification.
 - [ ] Android and desktop interoperation, reconnect, discovery, and NAT scenarios.
 - [ ] Attestation and uniqueness research reviewed against device/vendor limitations.
