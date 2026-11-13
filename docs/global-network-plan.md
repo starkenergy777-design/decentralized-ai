@@ -8,7 +8,7 @@ The first useful product means one signed, versioned model family that many devi
 
 ## Connectivity architecture
 
-1. **Outbound bootstrap:** A node opens outbound encrypted connections to several independently operated, publicly reachable bootstrap peers. These seed network discovery and routing; they do not decide which tasks run or control model results. Bootstrap addresses and keys must be replaceable without an app release.
+1. **Outbound bootstrap:** A node opens outbound encrypted connections to several independently operated, publicly reachable bootstrap peers. These seed network discovery and routing; they do not decide which tasks run or control model results. Bootstrap addresses and keys must be replaceable without an app release. Prefer QUIC/UDP where available; provide TCP and, for networks that only allow web egress, a TLS/WebSocket relay endpoint on port 443. No client can connect when a network blocks every supported outbound route.
 2. **Peer and capability discovery:** Publicly reachable server nodes maintain Kademlia routing. Phones use a low-resource client role when they are not publicly dialable. Later, signed provider records advertise model digest, supported task types, and coarse resource capacity; they must not publish prompts, personal data, or precise device telemetry.
 3. **NAT detection and direct connection:** AutoNAT estimates whether a peer is publicly reachable. When two peers are behind NAT, they first use a relay path to coordinate DCUtR hole punching. The implementation prefers a direct encrypted connection when available.
 4. **Relay fallback:** Circuit Relay v2 provides connectivity when direct dialing or hole punching fails. Relay servers accept outbound reservations from phones and enforce per-peer connection, duration, and byte limits. Relay operators can observe peer identities, network addresses, timing, and traffic volume, but end-to-end libp2p encryption protects task contents.
@@ -23,12 +23,12 @@ After connectivity works, a requester resolves providers for a specific signed m
 ## Delivery sequence
 
 1. Keep mDNS as a local development path and finish the two-device LAN demonstration.
-2. Build a public bootstrap/relay node mode with persistent identity, explicit resource limits, health reporting, and deployable container configuration. Run multiple replaceable instances before shipping a default endpoint in the Android app.
-3. Add Android/desktop bootstrap connection, Kademlia discovery, AutoNAT, Circuit Relay v2 client reservations, and DCUtR, retaining relay fallback.
+2. A self-hostable Circuit Relay v2 server binary now exists with persistent identity, bounded reservation/circuit resources, and a Docker image. The next server work is adding public DHT/bootstrap service, health metrics, deployment, and multiple independently operated endpoints before shipping defaults in Android. See [relay deployment](../deploy/relay/README.md).
+3. Add Android/desktop bootstrap connection, Kademlia discovery, AutoNAT, Circuit Relay v2 client reservations, and DCUtR, retaining relay fallback. Add a TLS/WebSocket transport path for restrictive networks.
 4. Validate devices across separate home/mobile networks, including carrier-grade NAT, relay failure, network switching, and app lifecycle. Record direct-versus-relayed outcomes and bandwidth.
 5. Add signed model capability/provider records, task leases, verification, and model distribution. Only then integrate on-device inference.
 6. Add independent relay/bootstrap operators, abuse controls, reputation that cannot grant governance power, and failure recovery.
 
 ## Scope boundary
 
-The repository currently implements only direct peer dialing and same-LAN mDNS. It has no public bootstrap service, DHT, AutoNAT, relay reservation, DCUtR, global peer registry, or model inference. A code change alone cannot make phones globally reachable: a publicly reachable bootstrap/relay network must also be deployed and kept available.
+The Android/desktop clients currently implement only direct peer dialing and same-LAN mDNS. A self-hostable relay server binary exists, but no public bootstrap/DHT service, client relay reservation, AutoNAT, DCUtR, global peer registry, or model inference is implemented. A code change alone cannot make phones globally reachable: a publicly reachable bootstrap/relay network must also be deployed and kept available.

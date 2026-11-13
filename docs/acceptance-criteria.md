@@ -16,6 +16,8 @@
 ## Global connectivity milestones
 
 - [ ] Several replaceable, independently operated public bootstrap peers seed the global network; no single endpoint controls membership or tasks.
+- [ ] A self-hostable relay binary uses persistent identity and bounded reservation/circuit capacity, duration, bytes, and request rates.
+- [ ] Nodes can use a TLS/WebSocket relay on port 443 when a network blocks the default QUIC/UDP and TCP paths.
 - [ ] Android and desktop nodes discover one another over unrelated home/mobile networks without shared Wi-Fi or manual port forwarding.
 - [ ] AutoNAT identifies public versus NAT-bound nodes; Circuit Relay v2 reservations have connection, duration, and byte limits.
 - [ ] DCUtR establishes direct connections when possible and transparently retains end-to-end encrypted relay fallback when hole punching fails.
