@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
+import java.net.Inet4Address
 import java.util.concurrent.Executors
 
 enum class P2pNodePhase { STOPPED, STARTING, RUNNING, STOPPING, ERROR }
@@ -52,7 +53,12 @@ class P2pNodeController(
         }
     }
 
-    fun start(wifiOnly: Boolean, chargingOnly: Boolean, computeEnabled: Boolean) {
+    fun start(
+        wifiOnly: Boolean,
+        chargingOnly: Boolean,
+        computeEnabled: Boolean,
+        peerAddress: String,
+    ) {
         if (closed) return
         this.wifiOnly = wifiOnly
         this.chargingOnly = chargingOnly
@@ -68,7 +74,7 @@ class P2pNodeController(
         executor.execute {
             if (!desiredRunning) return@execute
             try {
-                val response = NativeTaskBridge.startNode()
+                val response = NativeTaskBridge.startNode(peerAddress.trim())
                 val parts = response.split('|', limit = 4)
                 if (parts.firstOrNull() != "ok" || parts.size != 4) {
                     if (desiredRunning) {
@@ -91,9 +97,13 @@ class P2pNodeController(
                 publish(
                     P2pNodeUiState(
                         phase = P2pNodePhase.RUNNING,
-                        message = "კვანძი მუშაობს — მხოლოდ ეკრანის წინა პლანზე",
+                        message = if (peerAddress.isBlank()) {
+                            "კვანძი მუშაობს — მხოლოდ ეკრანის წინა პლანზე"
+                        } else {
+                            "კვანძი მუშაობს; პირდაპირი დაკავშირების მცდელობა გაიგზავნა"
+                        },
                         peerId = parts[2],
-                        listenAddress = parts[3],
+                        listenAddress = dialableListenAddress(parts[3]),
                     ),
                 )
             } catch (error: Exception) {
@@ -171,5 +181,18 @@ class P2pNodeController(
             }
         }
         return null
+    }
+
+    private fun dialableListenAddress(address: String): String {
+        if (!address.startsWith("/ip4/0.0.0.0/")) return address
+        val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivity.activeNetwork ?: return address
+        val localIp = connectivity.getLinkProperties(network)
+            ?.linkAddresses
+            ?.firstOrNull { it.address is Inet4Address && !it.address.isLoopbackAddress }
+            ?.address
+            ?.hostAddress
+            ?: return address
+        return address.replaceFirst("/ip4/0.0.0.0/", "/ip4/$localIp/")
     }
 }

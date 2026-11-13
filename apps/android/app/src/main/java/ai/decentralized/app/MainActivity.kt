@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -112,6 +114,7 @@ private fun ResourceSettingsScreen(
     var chargingOnly by remember {
         mutableStateOf(preferences.getBoolean(ResourcePolicy.CHARGING_ONLY, true))
     }
+    var peerAddress by remember { mutableStateOf("") }
     val p2pState by p2pNodeState
 
     Column(
@@ -148,12 +151,27 @@ private fun ResourceSettingsScreen(
             "ჩართვის შემდეგ ტელეფონი გახსნის ქსელურ კვანძს. Wi-Fi-ისა და დატენვის შეზღუდვები მოქმედებს; კვანძი მუშაობს მხოლოდ ამ ეკრანის წინა პლანზე ყოფნისას და არჩეული პირობების დაცვით.",
             style = MaterialTheme.typography.bodyMedium,
         )
+        OutlinedTextField(
+            value = peerAddress,
+            onValueChange = { peerAddress = it },
+            label = { Text("სხვა კვანძის მისამართი (არასავალდებულო)") },
+            placeholder = { Text("/ip4/192.168.1.20/tcp/40000") },
+            singleLine = true,
+            enabled = p2pState.phase != P2pNodePhase.RUNNING &&
+                p2pState.phase != P2pNodePhase.STARTING &&
+                p2pState.phase != P2pNodePhase.STOPPING,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "მისამართი აიღეთ მეორე მოწყობილობიდან. პირდაპირი კავშირი მუშაობს მხოლოდ მაშინ, თუ ქსელი მოწყობილობებს ერთმანეთთან მისვლის საშუალებას აძლევს.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Button(
             onClick = {
                 if (p2pState.phase == P2pNodePhase.RUNNING) {
                     p2pNodeController.stop()
                 } else {
-                    p2pNodeController.start(wifiOnly, chargingOnly, cpuBudget > 0)
+                    p2pNodeController.start(wifiOnly, chargingOnly, cpuBudget > 0, peerAddress)
                 }
             },
             enabled = participating && cpuBudget > 0 && p2pState.phase != P2pNodePhase.STARTING &&
@@ -163,9 +181,15 @@ private fun ResourceSettingsScreen(
             Text(if (p2pState.phase == P2pNodePhase.RUNNING) "კვანძის გაჩერება" else "P2P კვანძის დაწყება")
         }
         Text(p2pState.message, style = MaterialTheme.typography.bodyMedium)
-        p2pState.peerId?.let { Text("Peer ID: $it", style = MaterialTheme.typography.bodySmall) }
-        p2pState.listenAddress?.let {
-            Text("მოსმენის მისამართი: $it", style = MaterialTheme.typography.bodySmall)
+        SelectionContainer {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                p2pState.peerId?.let {
+                    Text("Peer ID: $it", style = MaterialTheme.typography.bodySmall)
+                }
+                p2pState.listenAddress?.let {
+                    Text("მოსმენის მისამართი: $it", style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
         Text(
             "ეს სატესტო კვანძია: მისამართი შეიძლება NAT-ის გამო გარედან მიუწვდომელი იყოს; აღმოჩენა/რელე ჯერ არ გვაქვს. ამ ეტაპზე კვანძები ასრულებენ მხოლოდ მცირე არითმეტიკულ პროტოკოლს — AI მოდელის განაწილებული inference ჯერ არ არის ჩართული.",

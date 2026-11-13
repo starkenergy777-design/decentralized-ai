@@ -2,12 +2,14 @@ use std::{error::Error, time::Duration};
 
 use futures::StreamExt;
 use libp2p::{
-    Multiaddr, PeerId, StreamProtocol, identify, noise, ping, request_response,
+    PeerId, StreamProtocol, identify, noise, ping, request_response,
     request_response::cbor::codec::Codec as CborCodec,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
 };
 use tokio::sync::oneshot;
+
+pub use libp2p::Multiaddr;
 
 pub use decentralized_ai_task_protocol::{
     ERROR_OVERFLOW, ERROR_UNSUPPORTED_OPERATION, ERROR_UNSUPPORTED_VERSION, OP_ADD, TASK_VERSION,

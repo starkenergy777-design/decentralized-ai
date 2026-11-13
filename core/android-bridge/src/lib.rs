@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use decentralized_ai_p2p::{NodeInfo, execute_task, run_node};
+use decentralized_ai_p2p::{Multiaddr, NodeInfo, execute_task, run_node};
 use decentralized_ai_task_protocol::TaskRequest as ProtocolTaskRequest;
 use jni::{
     EnvUnowned,
@@ -30,7 +30,15 @@ fn nodes() -> &'static Mutex<HashMap<i64, ManagedNode>> {
     NODES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn start_managed_node() -> Result<(i64, NodeInfo), String> {
+fn start_managed_node(peer_address: Option<String>) -> Result<(i64, NodeInfo), String> {
+    let dial_address = peer_address
+        .filter(|address| !address.trim().is_empty())
+        .map(|address| {
+            address
+                .parse::<Multiaddr>()
+                .map_err(|error| format!("invalid peer multiaddress: {error}"))
+        })
+        .transpose()?;
     let (stop_tx, stop_rx) = oneshot::channel();
     let (startup_tx, startup_rx) = std::sync::mpsc::channel();
     let node_thread = thread::Builder::new()
@@ -48,7 +56,12 @@ fn start_managed_node() -> Result<(i64, NodeInfo), String> {
                 }
             };
             if let Err(error) =
-                runtime.block_on(run_node(None, None, Some(startup_tx), Some(stop_rx)))
+                runtime.block_on(run_node(
+                    dial_address,
+                    None,
+                    Some(startup_tx),
+                    Some(stop_rx),
+                ))
             {
                 eprintln!("p2p_node_failed={error}");
             }
@@ -127,10 +140,12 @@ pub fn execute<'caller>(
 pub fn start_node<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
+    peer_address: jni::objects::JString<'caller>,
 ) -> jstring {
     unowned_env
         .with_env(|env| -> jni::errors::Result<jstring> {
-            let message = match start_managed_node() {
+            let peer_address = peer_address.try_to_string(env)?;
+            let message = match start_managed_node(Some(peer_address)) {
                 Ok((id, info)) => {
                     format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
                 }
