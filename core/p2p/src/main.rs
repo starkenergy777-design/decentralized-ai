@@ -2,7 +2,7 @@ use std::{error::Error, time::Duration};
 
 use futures::StreamExt;
 use libp2p::{
-    identify, ping,
+    identify, noise, ping, tcp, yamux,
     swarm::{NetworkBehaviour, SwarmEvent},
     Multiaddr, PeerId,
 };
@@ -21,6 +21,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut swarm = libp2p::SwarmBuilder::with_existing_identity(identity)
         .with_tokio()
+        .with_tcp(
+            tcp::Config::default(),
+            noise::Config::new,
+            yamux::Config::default,
+        )?
         .with_quic()
         .with_behaviour(|_| NodeBehaviour {
             identify: identify::Behaviour::new(identify_config),
@@ -31,8 +36,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         })
         .build();
 
-    let listen_address: Multiaddr = "/ip4/0.0.0.0/udp/0/quic-v1".parse()?;
-    swarm.listen_on(listen_address)?;
+    let tcp_address: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse()?;
+    let quic_address: Multiaddr = "/ip4/0.0.0.0/udp/0/quic-v1".parse()?;
+    swarm.listen_on(tcp_address)?;
+    swarm.listen_on(quic_address)?;
     println!("node_id={peer_id}");
     println!("identity_lifetime=process (ephemeral prototype key)");
 
