@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "ai.decentralized.app"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ai.decentralized.app"
