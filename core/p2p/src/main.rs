@@ -114,7 +114,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 println!("disconnected={peer_id} cause={cause:?}");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Task(event)) => match event {
-                request_response::Event::Message { peer, message } => match message {
+                request_response::Event::Message { peer, message, .. } => match message {
                     request_response::Message::Request {
                         request, channel, ..
                     } => {
@@ -141,6 +141,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     peer,
                     request_id,
                     error,
+                    ..
                 } => eprintln!(
                     "task_request_failed request={request_id:?} peer={peer} error={error}"
                 ),
