@@ -113,7 +113,12 @@ class P2pNodeController(
         executor.execute {
             if (!desiredRunning) return@execute
             try {
-                val response = NativeTaskBridge.startNode(peerAddress.trim(), sendDemoAddition)
+                val identitySeed = AndroidPeerIdentityStore.loadOrCreate(context)
+                val response = try {
+                    NativeTaskBridge.startNode(peerAddress.trim(), sendDemoAddition, identitySeed)
+                } finally {
+                    identitySeed.fill(0)
+                }
                 val parts = response.split('|', limit = 4)
                 if (parts.firstOrNull() != "ok" || parts.size != 4) {
                     if (desiredRunning) {

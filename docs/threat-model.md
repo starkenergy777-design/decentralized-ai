@@ -29,6 +29,8 @@
 
 - Strict message size limits, validation, timeouts, and version negotiation.
 - Separate network identity from any future governance credential.
+- On Android, encrypt the persistent Ed25519 seed with AES-GCM under a key managed by Android Keystore; erase transient seed buffers after handing identity to the node.
+- Treat an unlocked/rooted device or process-memory compromise as able to expose an active Android node's seed; Keystore encryption protects the stored seed, not its runtime use.
 - No transmission or persistence of raw biometric samples.
 - Keep governance simulation-only until uniqueness, recovery, privacy, and adversarial testing are reviewed.
 - Run untrusted tasks in an OS sandbox without access to keys or host credentials.
@@ -38,4 +40,3 @@
 ## Out of scope for the first prototype
 
 Production consensus, real voting eligibility, biometric anti-spoof guarantees, production key recovery, and safe arbitrary code execution are not delivered by the initial P2P prototype.
-

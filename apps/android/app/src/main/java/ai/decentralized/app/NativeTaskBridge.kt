@@ -17,7 +17,11 @@ class NativeTaskBridge {
         ): LongArray
 
         @JvmStatic
-        external fun startNode(peerAddress: String, sendDemoAddition: Boolean): String
+        external fun startNode(
+            peerAddress: String,
+            sendDemoAddition: Boolean,
+            identitySeed: ByteArray,
+        ): String
 
         @JvmStatic
         external fun pollNodeEvent(handle: Long): String

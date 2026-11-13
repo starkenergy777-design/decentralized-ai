@@ -16,10 +16,11 @@ use decentralized_ai_task_protocol::TaskRequest as ProtocolTaskRequest;
 use jni::{
     EnvUnowned,
     errors::ThrowRuntimeExAndDefault,
-    objects::JClass,
+    objects::{JByteArray, JClass},
     sys::{JNI_FALSE, JNI_TRUE, jboolean, jint, jlong, jlongArray, jstring},
 };
 use tokio::sync::oneshot;
+use zeroize::Zeroizing;
 
 struct ManagedNode {
     stop: oneshot::Sender<()>,
@@ -37,7 +38,9 @@ fn nodes() -> &'static Mutex<HashMap<i64, ManagedNode>> {
 fn start_managed_node(
     peer_address: Option<String>,
     send_demo_addition: bool,
+    identity_seed: [u8; 32],
 ) -> Result<(i64, NodeInfo), String> {
+    let identity_seed = Zeroizing::new(identity_seed);
     let dial_address = peer_address
         .filter(|address| !address.trim().is_empty())
         .map(|address| {
@@ -80,6 +83,7 @@ fn start_managed_node(
                 Some(startup_tx),
                 Some(stop_rx),
                 Some(event_tx),
+                Some(*identity_seed),
             )) {
                 eprintln!("p2p_node_failed={error}");
             }
@@ -186,17 +190,33 @@ pub fn start_node<'caller>(
     _class: JClass<'caller>,
     peer_address: jni::objects::JString<'caller>,
     send_demo_addition: jboolean,
+    identity_seed: JByteArray<'caller>,
 ) -> jstring {
     unowned_env
         .with_env(|env| -> jni::errors::Result<jstring> {
             let peer_address = peer_address.try_to_string(env)?;
-            let message =
-                match start_managed_node(Some(peer_address), send_demo_addition != JNI_FALSE) {
-                    Ok((id, info)) => {
-                        format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
-                    }
-                    Err(error) => format!("error|{error}"),
-                };
+            if identity_seed.len(env)? != 32 {
+                return Ok(env
+                    .new_string("error|Android identity seed must contain exactly 32 bytes")?
+                    .into_raw());
+            }
+            let mut seed_bytes = [0i8; 32];
+            identity_seed.get_region(env, 0, &mut seed_bytes)?;
+            let mut seed = [0u8; 32];
+            for (target, source) in seed.iter_mut().zip(seed_bytes.iter()) {
+                *target = *source as u8;
+            }
+            seed_bytes.fill(0);
+            let message = match start_managed_node(
+                Some(peer_address),
+                send_demo_addition != JNI_FALSE,
+                seed,
+            ) {
+                Ok((id, info)) => {
+                    format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
+                }
+                Err(error) => format!("error|{error}"),
+            };
             Ok(env.new_string(message)?.into_raw())
         })
         .resolve::<ThrowRuntimeExAndDefault>()

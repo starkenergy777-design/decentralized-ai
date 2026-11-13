@@ -53,8 +53,17 @@ pub async fn run_node(
     startup: Option<std::sync::mpsc::Sender<NodeInfo>>,
     mut stop: Option<oneshot::Receiver<()>>,
     events: Option<std::sync::mpsc::Sender<NodeEvent>>,
+    identity_seed: Option<[u8; 32]>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let identity = libp2p::identity::Keypair::generate_ed25519();
+    let identity_lifetime = if identity_seed.is_some() {
+        "persistent (Android Keystore-protected seed)"
+    } else {
+        "process (ephemeral prototype key)"
+    };
+    let identity = match identity_seed {
+        Some(seed) => libp2p::identity::Keypair::ed25519_from_bytes(seed)?,
+        None => libp2p::identity::Keypair::generate_ed25519(),
+    };
     let peer_id = PeerId::from(identity.public());
     let identify_config = identify::Config::new("/ai/peer/1".to_owned(), identity.public());
     let task_codec = CborCodec::<TaskRequest, TaskResponse>::default()
@@ -90,7 +99,7 @@ pub async fn run_node(
     swarm.listen_on(tcp_address)?;
     swarm.listen_on(quic_address)?;
     println!("node_id={peer_id}");
-    println!("identity_lifetime=process (ephemeral prototype key)");
+    println!("identity_lifetime={identity_lifetime}");
 
     if pending_task.is_some() && dial_address.is_none() {
         return Err("a peer multiaddress is required when using --add".into());

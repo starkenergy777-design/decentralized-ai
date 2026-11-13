@@ -15,6 +15,7 @@
 
 ## Later milestones
 
+- [ ] Android's Peer ID remains stable after app/device restart using a Keystore-managed encryption key, and changes only after identity storage is lost or reset.
 - [x] Android app builds a debug APK in CI.
 - [ ] Android's local demo invokes the shared Rust task protocol crate through JNI on supported ABIs.
 - [x] Resource preference screen defaults compute opt-in to off and persists the user's selected budgets locally.
