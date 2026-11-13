@@ -1,0 +1,8 @@
+/target/
+.gradle/
+local.properties
+*.jks
+*.keystore
+.idea/
+*.iml
+
