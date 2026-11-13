@@ -9,9 +9,9 @@ use std::{
 
 use futures::StreamExt;
 use libp2p::{
-    identify, noise, ping, relay,
+    Multiaddr, PeerId, identify, noise, ping, relay,
     swarm::{NetworkBehaviour, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId,
+    tcp, yamux,
 };
 
 #[derive(NetworkBehaviour)]
