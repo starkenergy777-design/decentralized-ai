@@ -6,7 +6,10 @@ use libp2p::Multiaddr;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut args = std::env::args().skip(1);
-    let dial_address = args.next().map(|address| address.parse::<Multiaddr>()).transpose()?;
+    let dial_address = args
+        .next()
+        .map(|address| address.parse::<Multiaddr>())
+        .transpose()?;
     let pending_task = match args.next().as_deref() {
         Some("--add") => {
             let left = args
