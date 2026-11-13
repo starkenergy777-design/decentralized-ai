@@ -23,7 +23,7 @@ trap cleanup EXIT
 server_pid=$!
 
 for _ in $(seq 1 50); do
-  if grep -q '^listening_on=/ip4/0\.0\.0\.0/tcp/' "$server_log"; then
+  if grep -Eq '^listening_on=/ip4/(0\.0\.0\.0|127\.0\.0\.1)/tcp/' "$server_log"; then
     break
   fi
   if ! kill -0 "$server_pid" 2>/dev/null; then
@@ -34,7 +34,7 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 
-peer_address="$(sed -n 's|^listening_on=/ip4/0\.0\.0\.0/tcp/\([0-9]*\)$|/ip4/127.0.0.1/tcp/\1|p' "$server_log" | head -n 1)"
+peer_address="$(sed -n 's|^listening_on=/ip4/[^/]*/tcp/\([0-9]*\)$|/ip4/127.0.0.1/tcp/\1|p' "$server_log" | head -n 1)"
 if [[ -z "$peer_address" ]]; then
   cat "$server_log"
   echo "server did not publish a TCP listen address" >&2
