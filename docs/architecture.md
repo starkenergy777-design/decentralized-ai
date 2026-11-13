@@ -20,7 +20,7 @@ This repository is an experimental implementation plan and prototype. The networ
 
 ## Identity and transport
 
-Each node gets a cryptographic network identity. A network identity identifies a peer; it does not grant governance rights. Transport encryption is provided by libp2p's authenticated secure channel. QUIC is the first transport candidate; discovery and NAT traversal are separate milestones. Bootstrap addresses are replaceable and are not trusted as authorities.
+Each node gets a cryptographic network identity. A network identity identifies a peer; it does not grant governance rights. The initial prototype listens on TCP with Noise/Yamux and QUIC (whose secure channel is provided by QUIC/TLS). The current process key is ephemeral and changes on restart; persistent, protected key storage is a follow-up task. Discovery and NAT traversal are separate milestones. Bootstrap addresses are replaceable and are not trusted as authorities.
 
 Governance identity, if ever activated, must be separate from network identity. No implementation may claim one-device-one-vote until a credible uniqueness mechanism and recovery/revocation rules have been independently reviewed.
 
