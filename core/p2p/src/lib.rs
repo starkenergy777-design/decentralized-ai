@@ -4,7 +4,7 @@ use futures::StreamExt;
 use libp2p::{
     PeerId, StreamProtocol, identify, mdns, noise, ping, relay, rendezvous, request_response,
     request_response::cbor::codec::Codec as CborCodec,
-    swarm::{NetworkBehaviour, SwarmEvent},
+    swarm::{ListenerId, NetworkBehaviour, Swarm, SwarmEvent},
     tcp, yamux,
 };
 use tokio::sync::oneshot;
@@ -77,9 +77,10 @@ pub async fn run_node(
     };
     let peer_id = PeerId::from(identity.public());
     let rendezvous_peer_id = match rendezvous_server.as_ref() {
-        Some(address) => Some(peer_id_in_multiaddr(address).ok_or(
-            "Rendezvous address must include /p2p/<server-peer-id>",
-        )?),
+        Some(address) => Some(
+            peer_id_in_multiaddr(address)
+                .ok_or("Rendezvous address must include /p2p/<server-peer-id>")?,
+        ),
         None => None,
     };
     let identify_config = identify::Config::new("/ai/peer/1".to_owned(), identity.public());
@@ -121,22 +122,21 @@ pub async fn run_node(
     let quic_address: Multiaddr = "/ip4/0.0.0.0/udp/0/quic-v1".parse()?;
     swarm.listen_on(tcp_address)?;
     swarm.listen_on(quic_address)?;
-    if let (Some(address), Some(_)) = (rendezvous_server.as_ref(), rendezvous_peer_id.as_ref()) {
-        let circuit_address = address
-            .clone()
-            .with(libp2p::multiaddr::Protocol::P2pCircuit);
-        swarm.listen_on(circuit_address)?;
+    let mut relay_listener_id = if let Some(address) = rendezvous_server.as_ref() {
+        let listener_id = start_relay_listener(&mut swarm, address);
         swarm.dial(address.clone())?;
         println!("rendezvous_server={address}");
-    }
+        listener_id
+    } else {
+        None
+    };
     println!("node_id={peer_id}");
     println!("identity_lifetime={identity_lifetime}");
     let mut dialing_discovered_peers = HashSet::new();
     let mut rendezvous_connected = false;
     let mut rendezvous_cookie: Option<rendezvous::Cookie> = None;
-    let mut rendezvous_refresh = tokio::time::interval(Duration::from_secs(
-        RENDEZVOUS_REFRESH_SECONDS,
-    ));
+    let mut rendezvous_refresh =
+        tokio::time::interval(Duration::from_secs(RENDEZVOUS_REFRESH_SECONDS));
     rendezvous_refresh.tick().await;
     let mut rendezvous_ticks = 0_u16;
 
@@ -164,6 +164,11 @@ pub async fn run_node(
                         }
                     }
                 } else {
+                    if relay_listener_id.is_none() {
+                        if let Some(address) = rendezvous_server.as_ref() {
+                            relay_listener_id = start_relay_listener(&mut swarm, address);
+                        }
+                    }
                     rendezvous_ticks = rendezvous_ticks.wrapping_add(1);
                     if rendezvous_ticks % RENDEZVOUS_REREGISTER_TICKS == 0 {
                         if let Some(rendezvous_peer_id) = rendezvous_peer_id.as_ref() {
@@ -192,9 +197,12 @@ pub async fn run_node(
         };
 
         match event {
-            SwarmEvent::NewListenAddr { address, .. } => {
+            SwarmEvent::NewListenAddr {
+                listener_id,
+                address,
+            } => {
                 println!("listening_on={address}");
-                if rendezvous_server.is_some()
+                if Some(listener_id) == relay_listener_id
                     && address
                         .iter()
                         .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::P2pCircuit))
@@ -221,6 +229,17 @@ pub async fn run_node(
                     }
                 }
             }
+            SwarmEvent::ListenerClosed {
+                listener_id,
+                addresses,
+                reason,
+            } if Some(listener_id) == relay_listener_id => {
+                println!("relay_listener_closed reason={reason:?}");
+                for address in addresses {
+                    swarm.remove_external_address(&address);
+                }
+                relay_listener_id = None;
+            }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
@@ -236,9 +255,7 @@ pub async fn run_node(
                         peer_id.clone(),
                     );
                 }
-                if endpoint.is_dialer()
-                    && rendezvous_peer_id.as_ref() != Some(&peer_id)
-                {
+                if endpoint.is_dialer() && rendezvous_peer_id.as_ref() != Some(&peer_id) {
                     if let Some(request) = pending_task.take() {
                         let task_id = request.id;
                         let request_id = swarm.behaviour_mut().task.send_request(&peer_id, request);
@@ -427,6 +444,19 @@ fn report_event(events: &Option<std::sync::mpsc::Sender<NodeEvent>>, event: Node
     }
 }
 
+fn start_relay_listener(swarm: &mut Swarm<Behaviour>, address: &Multiaddr) -> Option<ListenerId> {
+    let circuit_address = address
+        .clone()
+        .with(libp2p::multiaddr::Protocol::P2pCircuit);
+    match swarm.listen_on(circuit_address) {
+        Ok(listener_id) => Some(listener_id),
+        Err(error) => {
+            eprintln!("relay_listener_start_failed={error}");
+            None
+        }
+    }
+}
+
 fn peer_id_in_multiaddr(address: &Multiaddr) -> Option<PeerId> {
     address.iter().find_map(|protocol| match protocol {
         libp2p::multiaddr::Protocol::P2p(peer_id) => Some(peer_id),
@@ -469,3 +499,4 @@ mod tests {
         assert_eq!(response.error, Some(ERROR_OVERFLOW));
     }
 }
+
