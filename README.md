@@ -12,7 +12,7 @@ A research prototype for a decentralized peer-to-peer AI network. The project is
 
 ## Current status
 
-The first milestone is a small Rust/libp2p connectivity prototype and a documented threat model. The node now supports one bounded demonstration task: a peer can request integer addition and receive the checked result. It does not execute peer-supplied code. Hardware uniqueness and biometric liveness are explicitly unresolved research questions. Any governance implementation in the prototype must remain simulated and grant no real voting power.
+The first milestone is a small Rust/libp2p connectivity prototype and a documented threat model. The node now supports one versioned, bounded demonstration task: a peer can request checked integer addition and receive either a result or a typed error. The CBOR task codec caps requests and responses at 256 bytes. Android's local WorkManager demo uses the same task contract, but Android-to-Rust P2P communication is not connected yet. Neither side executes peer-supplied code. Hardware uniqueness and biometric liveness are explicitly unresolved research questions. Any governance implementation in the prototype must remain simulated and grant no real voting power.
 
 ## Run the local two-node demonstration
 

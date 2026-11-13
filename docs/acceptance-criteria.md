@@ -8,6 +8,7 @@
 - [x] A bounded ping/identify exchange completes between two local processes.
 - [x] One peer can request a bounded checked-add task and receive its result from another peer.
 - [x] Integer overflow returns no result instead of wrapping.
+- [ ] Rust and Android task v1 implementations interoperate against the shared CBOR schema, including error cases.
 - [ ] Malformed and oversized messages are rejected before application processing.
 - [x] CI compiles the Rust workspace and runs its automated checks.
 - [x] Documentation clearly marks governance, attestation, biometrics, AI training, and self-improvement as unimplemented.
@@ -27,4 +28,3 @@
 - [ ] Generated code is tested without network access or secrets and requires approval before release.
 
 No item is complete until demonstrated in a reproducible environment and recorded with evidence.
-

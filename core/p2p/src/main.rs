@@ -3,6 +3,7 @@ use std::{error::Error, time::Duration};
 use futures::StreamExt;
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol, identify, noise, ping, request_response,
+    request_response::cbor::Codec as CborCodec,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
 };
@@ -16,22 +17,65 @@ struct Behaviour {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct TaskRequest {
-    id: u64,
+    version: u8,
+    id: i64,
+    operation: u8,
     left: i64,
     right: i64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct TaskResponse {
-    id: u64,
+    version: u8,
+    id: i64,
     result: Option<i64>,
+    error: Option<u8>,
 }
 
+const TASK_VERSION: u8 = 1;
+const OP_ADD: u8 = 1;
+const ERROR_INVALID_ID: u8 = 1;
+const ERROR_UNSUPPORTED_VERSION: u8 = 2;
+const ERROR_UNSUPPORTED_OPERATION: u8 = 3;
+const ERROR_OVERFLOW: u8 = 4;
+const MAX_TASK_MESSAGE_BYTES: u64 = 256;
+
 fn execute_task(request: TaskRequest) -> TaskResponse {
-    TaskResponse {
-        id: request.id,
-        result: request.left.checked_add(request.right),
+    let error = if request.id <= 0 {
+        Some(ERROR_INVALID_ID)
+    } else if request.version != TASK_VERSION {
+        Some(ERROR_UNSUPPORTED_VERSION)
+    } else if request.operation != OP_ADD {
+        Some(ERROR_UNSUPPORTED_OPERATION)
+    } else {
+        None
+    };
+
+    if let Some(error) = error {
+        return TaskResponse {
+            version: TASK_VERSION,
+            id: request.id,
+            result: None,
+            error: Some(error),
+        };
+    }
+
+    match request.left.checked_add(request.right) {
+        Some(result) => TaskResponse {
+            version: TASK_VERSION,
+            id: request.id,
+            result: Some(result),
+            error: None,
+        },
+        None => TaskResponse {
+            version: TASK_VERSION,
+            id: request.id,
+            result: None,
+            error: Some(ERROR_OVERFLOW),
+        },
     }
 }
 
@@ -40,7 +84,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let identity = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(identity.public());
     let identify_config = identify::Config::new("/ai/peer/1".to_owned(), identity.public());
-    let task_behaviour = request_response::cbor::Behaviour::new(
+    let task_codec = CborCodec::<TaskRequest, TaskResponse>::default()
+        .set_request_size_maximum(MAX_TASK_MESSAGE_BYTES)
+        .set_response_size_maximum(MAX_TASK_MESSAGE_BYTES);
+    let task_behaviour = request_response::cbor::Behaviour::with_codec(
+        task_codec,
         [(
             StreamProtocol::new("/ai/task/1"),
             request_response::ProtocolSupport::Full,
@@ -83,7 +131,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .next()
                 .ok_or("--add requires two integer operands")?
                 .parse()?;
-            Some(TaskRequest { id: 1, left, right })
+            Some(TaskRequest {
+                version: TASK_VERSION,
+                id: 1,
+                operation: OP_ADD,
+                left,
+                right,
+            })
         }
         Some(other) => return Err(format!("unknown option: {other}").into()),
         None => None,
@@ -133,8 +187,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         request_id,
                         response,
                     } => println!(
-                        "task_response request={request_id:?} id={} result={:?}",
-                        response.id, response.result
+                        "task_response request={request_id:?} id={} result={:?} error={:?}",
+                        response.id, response.result, response.error
                     ),
                 },
                 request_response::Event::OutboundFailure {
@@ -160,29 +214,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{TaskRequest, execute_task};
+    use super::{OP_ADD, TASK_VERSION, TaskRequest, execute_task};
 
     #[test]
     fn addition_returns_checked_result() {
         let response = execute_task(TaskRequest {
+            version: TASK_VERSION,
             id: 7,
+            operation: OP_ADD,
             left: 20,
             right: 22,
         });
 
+        assert_eq!(response.version, TASK_VERSION);
         assert_eq!(response.id, 7);
         assert_eq!(response.result, Some(42));
+        assert_eq!(response.error, None);
     }
 
     #[test]
     fn addition_overflow_is_rejected() {
         let response = execute_task(TaskRequest {
+            version: TASK_VERSION,
             id: 8,
+            operation: OP_ADD,
             left: i64::MAX,
             right: 1,
         });
 
         assert_eq!(response.id, 8);
         assert_eq!(response.result, None);
+        assert_eq!(response.error, Some(super::ERROR_OVERFLOW));
     }
 }

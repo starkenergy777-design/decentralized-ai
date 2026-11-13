@@ -66,7 +66,8 @@ private fun ResourceSettingsScreen(preferences: SharedPreferences) {
                 WorkInfo.State.SUCCEEDED ->
                     "დასრულდა — შედეგი ${latest.outputData.getLong(DemoTaskWorker.KEY_RESULT, 0L)}"
                 WorkInfo.State.FAILED ->
-                    "ვერ შესრულდა — ${latest.outputData.getString(DemoTaskWorker.KEY_ERROR) ?: "შეზღუდვა"}"
+                    "ვერ შესრულდა — ${latest.outputData.getString(DemoTaskWorker.KEY_WORKER_ERROR)
+                        ?: TaskProtocol.errorName(latest.outputData.getInt(DemoTaskWorker.KEY_ERROR, 0))}"
                 WorkInfo.State.CANCELLED -> "გაუქმებულია"
             }
         }
@@ -229,4 +230,3 @@ private fun BudgetSlider(
         )
     }
 }
-

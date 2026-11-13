@@ -1,0 +1,29 @@
+; CBOR payloads used by the /ai/task/1 request-response protocol.
+; Implementations reject unknown map keys and validate values before execution.
+
+int64 = -9223372036854775808..9223372036854775807
+uint8 = 0..255
+task-id = 0..9223372036854775807
+
+task-request = {
+  "version": uint8,
+  "id": task-id,
+  "operation": uint8,
+  "left": int64,
+  "right": int64
+}
+
+; A valid request uses id > 0. Zero is accepted by the decoder only so the
+; node can return ERROR_INVALID_ID without executing the task.
+
+task-response = {
+  "version": 1,
+  "id": task-id,
+  "result": int64,
+  "error": null
+} / {
+  "version": 1,
+  "id": task-id,
+  "result": null,
+  "error": 1..4
+}
