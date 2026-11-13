@@ -2,8 +2,9 @@ use std::{collections::HashSet, error::Error, time::Duration};
 
 use futures::StreamExt;
 use libp2p::{
-    PeerId, StreamProtocol, core::transport::ListenerId, identify, mdns, noise, ping, relay,
-    rendezvous, request_response,
+    PeerId, StreamProtocol,
+    core::transport::ListenerId,
+    identify, mdns, noise, ping, relay, rendezvous, request_response,
     request_response::cbor::codec::Codec as CborCodec,
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     tcp, yamux,
@@ -323,17 +324,14 @@ pub async fn run_node(
                             continue;
                         }
                         for address in registration.record.addresses() {
-                            let peer_suffix = Multiaddr::empty().with(
-                                libp2p::multiaddr::Protocol::P2p(discovered_peer.clone()),
-                            );
+                            let peer_suffix = Multiaddr::empty()
+                                .with(libp2p::multiaddr::Protocol::P2p(discovered_peer.clone()));
                             let address = if address.ends_with(&peer_suffix) {
                                 address.clone()
                             } else {
                                 address
                                     .clone()
-                                    .with(libp2p::multiaddr::Protocol::P2p(
-                                        discovered_peer.clone(),
-                                    ))
+                                    .with(libp2p::multiaddr::Protocol::P2p(discovered_peer.clone()))
                             };
                             swarm.add_peer_address(discovered_peer.clone(), address);
                         }
