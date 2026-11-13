@@ -245,4 +245,3 @@ pub fn stop_node<'caller>(
         JNI_FALSE
     }
 }
-
