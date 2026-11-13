@@ -15,6 +15,7 @@
 - Malicious peers sending malformed or oversized protocol messages.
 - Participants returning false compute results or poisoned model updates.
 - Compromised endpoints, rooted devices, replayed evidence, and relays that observe metadata.
+- Malicious or unavailable bootstrap/DHT/relay operators; DHT eclipse or Sybil attempts; carrier-grade NAT and restrictive firewalls that prevent inbound dialing.
 - Supply-chain compromise in dependencies, models, or build/release infrastructure.
 
 ## Trust assumptions and unresolved questions
@@ -25,6 +26,7 @@
 - A compromised Android device can falsify application-level observations; biometric liveness is not a guarantee of device integrity.
 - Universal one-physical-phone-one-vote is unresolved. Do not activate real voting based on app-only checks.
 - Bootstrap peers and relays may be unavailable or malicious; the protocol must not treat them as authorities.
+- Public bootstrap and relay peers are reachability infrastructure, not trusted task schedulers. A relay can observe Peer IDs, IP addresses, timing, and traffic volume even though end-to-end encryption protects task contents.
 
 ## Initial mitigations
 
@@ -38,6 +40,7 @@
 - Verify artifacts by content hash and signatures; support rollback of staged updates.
 - Make resource sharing opt-in and interruptible.
 - Enable Android Wi-Fi multicast reception only while the foreground P2P node is running, and release the multicast lock immediately when it stops.
+- Keep multiple independent bootstrap/relay choices, bound relay reservations and bytes, rotate endpoints safely, and fail closed when a signed provider record or task result is invalid.
 
 ## Out of scope for the first prototype
 

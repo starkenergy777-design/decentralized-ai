@@ -13,9 +13,18 @@
 - [x] CI compiles the Rust workspace and runs its automated checks.
 - [x] Documentation clearly marks governance, attestation, biometrics, AI training, and self-improvement as unimplemented.
 
-## Later milestones
+## Global connectivity milestones
 
-- [ ] Android and desktop peers discover/connect on a shared LAN via mDNS; verify multicast-lock lifecycle, peer cap, and task exchange on real devices.
+- [ ] Several replaceable, independently operated public bootstrap peers seed the global network; no single endpoint controls membership or tasks.
+- [ ] Android and desktop nodes discover one another over unrelated home/mobile networks without shared Wi-Fi or manual port forwarding.
+- [ ] AutoNAT identifies public versus NAT-bound nodes; Circuit Relay v2 reservations have connection, duration, and byte limits.
+- [ ] DCUtR establishes direct connections when possible and transparently retains end-to-end encrypted relay fallback when hole punching fails.
+- [ ] Peer connectivity survives Wi-Fi/mobile switching and foreground resume with clear user-visible state and bounded reconnection.
+- [ ] Relays cannot read task contents; provider metadata is signed, minimal, and resilient to stale or malicious records.
+
+## Other later milestones
+
+- [ ] Android peers discover/connect on a shared LAN via mDNS; verify multicast-lock lifecycle, peer cap, and task exchange on real devices. This is a local development check only, not global connectivity.
 - [ ] Android's Peer ID remains stable after app/device restart using a Keystore-managed encryption key, and changes only after identity storage is lost or reset.
 - [x] Android app builds a debug APK in CI.
 - [ ] Android's local demo invokes the shared Rust task protocol crate through JNI on supported ABIs.
