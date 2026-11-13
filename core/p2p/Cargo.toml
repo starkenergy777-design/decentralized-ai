@@ -1,0 +1,15 @@
+[package]
+name = "decentralized-ai-p2p"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+futures = "0.3"
+libp2p = { version = "0.57.1", features = ["tokio", "quic", "ping", "identify", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true
+
