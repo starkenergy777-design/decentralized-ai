@@ -43,3 +43,9 @@ jobs:
           packages: platform-tools
       - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
       - run: gradle -p apps/android :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decentralized-ai-debug-apk-${{ github.sha }}
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
