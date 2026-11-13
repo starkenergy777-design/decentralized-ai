@@ -22,6 +22,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,19 +38,37 @@ import androidx.work.WorkManager
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
+    private val p2pNodeState = mutableStateOf(P2pNodeUiState())
+    private lateinit var p2pNodeController: P2pNodeController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        p2pNodeController = P2pNodeController(this) { p2pNodeState.value = it }
         val preferences = getSharedPreferences(ResourcePolicy.PREFERENCES, MODE_PRIVATE)
         setContent {
             MaterialTheme {
-                ResourceSettingsScreen(preferences)
+                ResourceSettingsScreen(preferences, p2pNodeController, p2pNodeState)
             }
         }
+    }
+
+    override fun onStop() {
+        p2pNodeController.stop()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        p2pNodeController.close()
+        super.onDestroy()
     }
 }
 
 @Composable
-private fun ResourceSettingsScreen(preferences: SharedPreferences) {
+private fun ResourceSettingsScreen(
+    preferences: SharedPreferences,
+    p2pNodeController: P2pNodeController,
+    p2pNodeState: State<P2pNodeUiState>,
+) {
     val context = LocalContext.current
     val workManager = remember(context) { WorkManager.getInstance(context) }
     var taskStatus by remember { mutableStateOf("ჯერ დემო ამოცანა არ გაშვებულა") }
@@ -93,6 +112,7 @@ private fun ResourceSettingsScreen(preferences: SharedPreferences) {
     var chargingOnly by remember {
         mutableStateOf(preferences.getBoolean(ResourcePolicy.CHARGING_ONLY, true))
     }
+    val p2pState by p2pNodeState
 
     Column(
         modifier = Modifier
@@ -115,8 +135,45 @@ private fun ResourceSettingsScreen(preferences: SharedPreferences) {
             onCheckedChange = {
                 participating = it
                 preferences.edit().putBoolean(ResourcePolicy.PARTICIPATING, it).apply()
-                if (!it) ContributionScheduler.stop(context)
+                if (!it) {
+                    ContributionScheduler.stop(context)
+                    p2pNodeController.stop()
+                }
             },
+        )
+
+        HorizontalDivider()
+        Text("P2P კვანძი", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "ჩართვის შემდეგ ტელეფონი გახსნის ქსელურ კვანძს. Wi-Fi-ისა და დატენვის შეზღუდვები მოქმედებს; კვანძი მუშაობს მხოლოდ ამ ეკრანის წინა პლანზე ყოფნისას და არჩეული პირობების დაცვით.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Button(
+            onClick = {
+                if (p2pState.phase == P2pNodePhase.RUNNING) {
+                    p2pNodeController.stop()
+                } else {
+                    p2pNodeController.start(wifiOnly, chargingOnly, cpuBudget > 0)
+                }
+            },
+            enabled = participating && cpuBudget > 0 && p2pState.phase != P2pNodePhase.STARTING &&
+                p2pState.phase != P2pNodePhase.STOPPING,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (p2pState.phase == P2pNodePhase.RUNNING) "კვანძის გაჩერება" else "P2P კვანძის დაწყება")
+        }
+        Text(p2pState.message, style = MaterialTheme.typography.bodyMedium)
+        p2pState.peerId?.let { Text("Peer ID: $it", style = MaterialTheme.typography.bodySmall) }
+        p2pState.listenAddress?.let {
+            Text("მოსმენის მისამართი: $it", style = MaterialTheme.typography.bodySmall)
+        }
+        Text(
+            "ეს სატესტო კვანძია: მისამართი შეიძლება NAT-ის გამო გარედან მიუწვდომელი იყოს; აღმოჩენა/რელე ჯერ არ გვაქვს. ამ ეტაპზე კვანძები ასრულებენ მხოლოდ მცირე არითმეტიკულ პროტოკოლს — AI მოდელის განაწილებული inference ჯერ არ არის ჩართული.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            "დღიური ქსელის ბიუჯეტის ზუსტი აღრიცხვა ჯერ არ მოქმედებს P2P კვანძზე; ქსელის ხარჯის შესაზღუდად დატოვეთ Wi-Fi-only ჩართული.",
+            style = MaterialTheme.typography.bodySmall,
         )
 
         BudgetSlider(
@@ -125,7 +182,10 @@ private fun ResourceSettingsScreen(preferences: SharedPreferences) {
             range = 0..50,
             steps = 9,
             valueLabel = "$cpuBudget%",
-            onValueChange = { cpuBudget = it },
+            onValueChange = {
+                cpuBudget = it
+                p2pNodeController.updatePolicy(wifiOnly, chargingOnly, it > 0)
+            },
             onValueChangeFinished = {
                 preferences.edit().putInt(ResourcePolicy.CPU_BUDGET_PERCENT, cpuBudget).apply()
             },
@@ -160,6 +220,11 @@ private fun ResourceSettingsScreen(preferences: SharedPreferences) {
             onCheckedChange = {
                 wifiOnly = it
                 preferences.edit().putBoolean(ResourcePolicy.WIFI_ONLY, it).apply()
+                p2pNodeController.updatePolicy(
+                    wifiOnly = it,
+                    chargingOnly = chargingOnly,
+                    computeEnabled = cpuBudget > 0,
+                )
             },
         )
         PolicySwitch(
@@ -168,6 +233,11 @@ private fun ResourceSettingsScreen(preferences: SharedPreferences) {
             onCheckedChange = {
                 chargingOnly = it
                 preferences.edit().putBoolean(ResourcePolicy.CHARGING_ONLY, it).apply()
+                p2pNodeController.updatePolicy(
+                    wifiOnly = wifiOnly,
+                    chargingOnly = it,
+                    computeEnabled = cpuBudget > 0,
+                )
             },
         )
         Spacer(Modifier.height(8.dp))
@@ -182,7 +252,7 @@ private fun ResourceSettingsScreen(preferences: SharedPreferences) {
         }
         Text(taskStatus, style = MaterialTheme.typography.bodyMedium)
         Text(
-            "ეს მხოლოდ უსაფრთხო, ადგილობრივი ტესტ-ამოცანაა. P2P ამოცანების მიღება და დღიური ქსელის ბიუჯეტის აღრიცხვა ჯერ არ არის ჩართული.",
+            "ეს მხოლოდ უსაფრთხო, ადგილობრივი ტესტ-ამოცანაა. P2P კვანძი სატესტო არითმეტიკულ მოთხოვნებს იღებს; დღიური ქსელის ბიუჯეტის ზუსტი აღრიცხვა ჯერ არ არის ჩართული.",
             style = MaterialTheme.typography.bodySmall,
         )
         Text(

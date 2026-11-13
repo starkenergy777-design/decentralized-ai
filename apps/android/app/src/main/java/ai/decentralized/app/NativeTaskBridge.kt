@@ -1,6 +1,6 @@
 package ai.decentralized.app
 
-/** Narrow JNI boundary into the shared Rust task protocol crate. */
+/** JNI boundary into the shared task protocol and P2P node. */
 class NativeTaskBridge {
     companion object {
         init {
@@ -15,5 +15,11 @@ class NativeTaskBridge {
             left: Long,
             right: Long,
         ): LongArray
+
+        @JvmStatic
+        external fun startNode(): String
+
+        @JvmStatic
+        external fun stopNode(handle: Long): Boolean
     }
 }

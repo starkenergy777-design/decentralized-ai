@@ -9,7 +9,7 @@ This repository is an experimental implementation plan and prototype. The networ
 | Component | Responsibility | Initial status |
 | --- | --- | --- |
 | Rust core | Node identity, P2P transport, shared task protocol and execution | Prototype |
-| Android app (Kotlin) | User interface, permissions, local resource controls, bounded local demo worker | Local demo calls shared Rust task crate through JNI; P2P bridge planned |
+| Android app (Kotlin) | User interface, opt-in controls, bounded local demo worker, foreground P2P lifecycle | Starts shared Rust/libp2p node through JNI; shows peer ID and listen address |
 | Desktop node (Rust) | P2P participation and optional compute | Planned |
 | Protocol schemas | Versioned task contract shared across clients | Task v1 drafted and mirrored in Rust/Kotlin |
 | Compute | Sandboxed, bounded, verifiable task execution | Planned |
@@ -37,7 +37,7 @@ Protocols will be versioned and bounded:
 - `/ai/attestation/1`: attestation evidence envelopes.
 - `/ai/update/1`: signed release metadata.
 
-The current `/ai/task/1` Rust prototype accepts a versioned typed request with fixed-size numeric fields and caps CBOR requests and responses at 256 bytes; it never accepts executable code. Rust rejects unknown fields and validates the task ID, version, operation, and overflow before returning a result. Android's local WorkManager demo invokes the same Rust task protocol crate through JNI, but Android does not connect to the P2P node yet. Android P2P integration remains open work.
+The current `/ai/task/1` Rust prototype accepts a versioned typed request with fixed-size numeric fields and caps CBOR requests and responses at 256 bytes; it never accepts executable code. Rust rejects unknown fields and validates the task ID, version, operation, and overflow before returning a result. Android starts the same Rust/libp2p node through JNI only after the user opts in and taps the start control. The node stops when the Activity leaves the foreground or participation is disabled. The key is still ephemeral, and the first displayed listen address is not guaranteed to be reachable through NAT. There is no peer discovery, relay, or model inference yet.
 
 ## Compute and AI
 

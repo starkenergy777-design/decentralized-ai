@@ -36,7 +36,13 @@ val buildRustAndroid by tasks.registering(Exec::class) {
         "build", "--release", "-p", "decentralized-ai-android-bridge",
     )
     inputs.files(fileTree(repositoryRoot) {
-        include("Cargo.toml", "Cargo.lock", "core/task-protocol/**", "core/android-bridge/**")
+        include(
+            "Cargo.toml",
+            "Cargo.lock",
+            "core/task-protocol/**",
+            "core/p2p/**",
+            "core/android-bridge/**",
+        )
     })
     outputs.dir(rustAndroidOutput)
 }

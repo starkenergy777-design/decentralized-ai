@@ -1,69 +1,13 @@
-use std::{error::Error, time::Duration};
+use std::error::Error;
 
-use futures::StreamExt;
-use libp2p::{
-    Multiaddr, PeerId, StreamProtocol, identify, noise, ping, request_response,
-    request_response::cbor::codec::Codec as CborCodec,
-    swarm::{NetworkBehaviour, SwarmEvent},
-    tcp, yamux,
-};
-
-pub use decentralized_ai_task_protocol::{
-    ERROR_OVERFLOW, ERROR_UNSUPPORTED_OPERATION, ERROR_UNSUPPORTED_VERSION, OP_ADD, TASK_VERSION,
-    TaskRequest, TaskResponse, execute_task,
-};
-
-#[derive(NetworkBehaviour)]
-struct Behaviour {
-    identify: identify::Behaviour,
-    ping: ping::Behaviour,
-    task: request_response::cbor::Behaviour<TaskRequest, TaskResponse>,
-}
-const MAX_TASK_MESSAGE_BYTES: u64 = 256;
+use decentralized_ai_p2p::{OP_ADD, TASK_VERSION, TaskRequest, run_node};
+use libp2p::Multiaddr;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let identity = libp2p::identity::Keypair::generate_ed25519();
-    let peer_id = PeerId::from(identity.public());
-    let identify_config = identify::Config::new("/ai/peer/1".to_owned(), identity.public());
-    let task_codec = CborCodec::<TaskRequest, TaskResponse>::default()
-        .set_request_size_maximum(MAX_TASK_MESSAGE_BYTES)
-        .set_response_size_maximum(MAX_TASK_MESSAGE_BYTES);
-    let task_behaviour = request_response::cbor::Behaviour::with_codec(
-        task_codec,
-        [(
-            StreamProtocol::new("/ai/task/1"),
-            request_response::ProtocolSupport::Full,
-        )],
-        request_response::Config::default(),
-    );
-
-    let mut swarm = libp2p::SwarmBuilder::with_existing_identity(identity)
-        .with_tokio()
-        .with_tcp(
-            tcp::Config::default(),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
-        .with_quic()
-        .with_behaviour(|_| Behaviour {
-            identify: identify::Behaviour::new(identify_config),
-            ping: ping::Behaviour::default(),
-            task: task_behaviour,
-        })?
-        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(60)))
-        .build();
-
-    let tcp_address: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse()?;
-    let quic_address: Multiaddr = "/ip4/0.0.0.0/udp/0/quic-v1".parse()?;
-    swarm.listen_on(tcp_address)?;
-    swarm.listen_on(quic_address)?;
-    println!("node_id={peer_id}");
-    println!("identity_lifetime=process (ephemeral prototype key)");
-
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut args = std::env::args().skip(1);
-    let dial_address = args.next();
-    let mut pending_task = match args.next().as_deref() {
+    let dial_address = args.next().map(|address| address.parse::<Multiaddr>()).transpose()?;
+    let pending_task = match args.next().as_deref() {
         Some("--add") => {
             let left = args
                 .next()
@@ -85,78 +29,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         None => None,
     };
 
-    if pending_task.is_some() && dial_address.is_none() {
-        return Err("a peer multiaddress is required when using --add".into());
-    }
-
-    if let Some(address) = dial_address {
-        let address: Multiaddr = address.parse()?;
-        swarm.dial(address.clone())?;
-        println!("dialing={address}");
-    }
-    loop {
-        match swarm.select_next_some().await {
-            SwarmEvent::NewListenAddr { address, .. } => {
-                println!("listening_on={address}");
-            }
-            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                println!("connected={peer_id}");
-                if let Some(request) = pending_task.take() {
-                    let request_id = swarm.behaviour_mut().task.send_request(&peer_id, request);
-                    println!("task_request_sent={request_id:?} peer={peer_id}");
-                }
-            }
-            SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                println!("disconnected={peer_id} cause={cause:?}");
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::Task(event)) => match event {
-                request_response::Event::Message { peer, message, .. } => match message {
-                    request_response::Message::Request {
-                        request, channel, ..
-                    } => {
-                        let response = execute_task(request);
-                        println!("task_received id={} peer={peer}", request.id);
-                        if swarm
-                            .behaviour_mut()
-                            .task
-                            .send_response(channel, response)
-                            .is_err()
-                        {
-                            eprintln!("task_response_dropped peer={peer}");
-                        }
-                    }
-                    request_response::Message::Response {
-                        request_id,
-                        response,
-                    } => println!(
-                        "task_response request={request_id:?} id={} result={:?} error={:?}",
-                        response.id, response.result, response.error
-                    ),
-                },
-                request_response::Event::OutboundFailure {
-                    peer,
-                    request_id,
-                    error,
-                    ..
-                } => eprintln!(
-                    "task_request_failed request={request_id:?} peer={peer} error={error}"
-                ),
-                request_response::Event::InboundFailure { peer, error, .. } => {
-                    eprintln!("task_request_rejected peer={peer} error={error}");
-                }
-                request_response::Event::ResponseSent { peer, .. } => {
-                    println!("task_response_sent peer={peer}");
-                }
-            },
-            SwarmEvent::Behaviour(event) => println!("protocol_event={event:?}"),
-            _ => {}
-        }
-    }
+    run_node(dial_address, pending_task, None, None).await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{OP_ADD, TASK_VERSION, TaskRequest, execute_task};
+    use decentralized_ai_p2p::{ERROR_OVERFLOW, OP_ADD, TASK_VERSION, TaskRequest, execute_task};
 
     #[test]
     fn addition_returns_checked_result() {
@@ -186,6 +64,6 @@ mod tests {
 
         assert_eq!(response.id, 8);
         assert_eq!(response.result, None);
-        assert_eq!(response.error, Some(super::ERROR_OVERFLOW));
+        assert_eq!(response.error, Some(ERROR_OVERFLOW));
     }
 }
