@@ -19,4 +19,6 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --all-targets
       - run: cargo test --workspace --all-targets
+      - run: cargo build --workspace
+      - run: bash tests/integration/p2p-smoke.sh
       - run: cargo clippy --workspace --all-targets
