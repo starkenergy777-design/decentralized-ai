@@ -2,9 +2,10 @@ use std::{collections::HashSet, error::Error, time::Duration};
 
 use futures::StreamExt;
 use libp2p::{
-    PeerId, StreamProtocol, identify, mdns, noise, ping, relay, rendezvous, request_response,
+    PeerId, StreamProtocol, core::transport::ListenerId, identify, mdns, noise, ping, relay,
+    rendezvous, request_response,
     request_response::cbor::codec::Codec as CborCodec,
-    swarm::{ListenerId, NetworkBehaviour, Swarm, SwarmEvent},
+    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     tcp, yamux,
 };
 use tokio::sync::oneshot;
@@ -362,7 +363,9 @@ pub async fn run_node(
                         }
                     }
                 }
-                rendezvous::client::Event::Registered { rendezvous_node, .. } => {
+                rendezvous::client::Event::Registered {
+                    rendezvous_node, ..
+                } => {
                     println!("rendezvous_registered={rendezvous_node}");
                 }
                 rendezvous::client::Event::RegisterFailed {
