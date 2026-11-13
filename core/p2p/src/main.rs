@@ -7,7 +7,11 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
 };
-use serde::{Deserialize, Serialize};
+
+pub use decentralized_ai_task_protocol::{
+    ERROR_OVERFLOW, ERROR_UNSUPPORTED_OPERATION, ERROR_UNSUPPORTED_VERSION, OP_ADD,
+    TASK_VERSION, TaskRequest, TaskResponse, execute_task,
+};
 
 #[derive(NetworkBehaviour)]
 struct Behaviour {
@@ -15,68 +19,7 @@ struct Behaviour {
     ping: ping::Behaviour,
     task: request_response::cbor::Behaviour<TaskRequest, TaskResponse>,
 }
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct TaskRequest {
-    version: u8,
-    id: i64,
-    operation: u8,
-    left: i64,
-    right: i64,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct TaskResponse {
-    version: u8,
-    id: i64,
-    result: Option<i64>,
-    error: Option<u8>,
-}
-
-const TASK_VERSION: u8 = 1;
-const OP_ADD: u8 = 1;
-const ERROR_INVALID_ID: u8 = 1;
-const ERROR_UNSUPPORTED_VERSION: u8 = 2;
-const ERROR_UNSUPPORTED_OPERATION: u8 = 3;
-const ERROR_OVERFLOW: u8 = 4;
 const MAX_TASK_MESSAGE_BYTES: u64 = 256;
-
-fn execute_task(request: TaskRequest) -> TaskResponse {
-    let error = if request.id <= 0 {
-        Some(ERROR_INVALID_ID)
-    } else if request.version != TASK_VERSION {
-        Some(ERROR_UNSUPPORTED_VERSION)
-    } else if request.operation != OP_ADD {
-        Some(ERROR_UNSUPPORTED_OPERATION)
-    } else {
-        None
-    };
-
-    if let Some(error) = error {
-        return TaskResponse {
-            version: TASK_VERSION,
-            id: request.id,
-            result: None,
-            error: Some(error),
-        };
-    }
-
-    match request.left.checked_add(request.right) {
-        Some(result) => TaskResponse {
-            version: TASK_VERSION,
-            id: request.id,
-            result: Some(result),
-            error: None,
-        },
-        None => TaskResponse {
-            version: TASK_VERSION,
-            id: request.id,
-            result: None,
-            error: Some(ERROR_OVERFLOW),
-        },
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

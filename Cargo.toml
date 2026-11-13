@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core/p2p"]
+members = ["core/task-protocol", "core/p2p", "core/android-bridge"]
 
 [workspace.package]
 edition = "2024"
@@ -11,4 +11,3 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = "warn"
-

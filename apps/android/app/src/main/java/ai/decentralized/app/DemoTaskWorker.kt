@@ -34,13 +34,28 @@ class DemoTaskWorker(context: Context, parameters: WorkerParameters) : Worker(co
             return failure("invalid_task_request")
         }
 
-        val response = TaskProtocol.Request(
+        val request = TaskProtocol.Request(
             version = inputData.getInt(KEY_VERSION, -1),
             id = inputData.getLong(KEY_ID, 0L),
             operation = inputData.getInt(KEY_OPERATION, 0),
             left = inputData.getLong(KEY_LEFT, 0L),
             right = inputData.getLong(KEY_RIGHT, 0L),
-        ).execute()
+        )
+        val nativeValues = try {
+            NativeTaskBridge.execute(
+                request.version,
+                request.id,
+                request.operation,
+                request.left,
+                request.right,
+            )
+        } catch (_: UnsatisfiedLinkError) {
+            return failure("native_library_unavailable")
+        } catch (_: RuntimeException) {
+            return failure("native_task_execution_failed")
+        }
+        val response = TaskProtocol.responseFromNative(request, nativeValues)
+            ?: return failure("invalid_native_response")
         val error = response.error
         if (error != null) {
             return Result.failure(

@@ -16,6 +16,7 @@
 ## Later milestones
 
 - [x] Android app builds a debug APK in CI.
+- [ ] Android's local demo invokes the shared Rust task protocol crate through JNI on supported ABIs.
 - [x] Resource preference screen defaults compute opt-in to off and persists the user's selected budgets locally.
 - [ ] Local WorkManager demo obeys opt-in, charging/unmetered-network constraints, low-battery restrictions, and cancellation; it does not yet process P2P tasks.
 - [ ] Background compute enforces the selected limits, responds to thermal/battery/network constraints, and can be stopped immediately.

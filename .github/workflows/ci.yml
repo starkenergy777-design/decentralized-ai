@@ -27,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - run: cargo install cargo-ndk --version 4.1.2 --locked
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -37,6 +41,5 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-      - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
       - run: gradle -p apps/android :app:assembleDebug
-

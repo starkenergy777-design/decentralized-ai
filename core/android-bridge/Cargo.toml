@@ -1,0 +1,15 @@
+[package]
+name = "decentralized-ai-android-bridge"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+decentralized-ai-task-protocol = { path = "../task-protocol" }
+jni = "0.22.4"
+
+[lints]
+workspace = true

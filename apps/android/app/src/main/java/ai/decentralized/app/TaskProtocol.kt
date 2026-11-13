@@ -1,6 +1,6 @@
 package ai.decentralized.app
 
-/** Logical /ai/task/1 contract shared with the Rust node. */
+/** Logical /ai/task/1 contract shared with the Rust node and JNI bridge. */
 internal object TaskProtocol {
     const val VERSION = 1
     const val OP_ADD = 1
@@ -24,21 +24,7 @@ internal object TaskProtocol {
         val operation: Int,
         val left: Long,
         val right: Long,
-    ) {
-        fun execute(): Response {
-            if (id <= 0L) return failure(ERROR_INVALID_ID)
-            if (version != VERSION) return failure(ERROR_UNSUPPORTED_VERSION)
-            if (operation != OP_ADD) return failure(ERROR_UNSUPPORTED_OPERATION)
-
-            return try {
-                Response(VERSION, id, Math.addExact(left, right), null)
-            } catch (_: ArithmeticException) {
-                failure(ERROR_OVERFLOW)
-            }
-        }
-
-        private fun failure(code: Int) = Response(VERSION, id, null, code)
-    }
+    )
 
     data class Response(
         val version: Int,
@@ -46,6 +32,19 @@ internal object TaskProtocol {
         val result: Long?,
         val error: Int?,
     )
+
+    fun responseFromNative(request: Request, values: LongArray): Response? {
+        if (values.size != 4 || values[0] != VERSION.toLong() || values[1] != request.id) {
+            return null
+        }
+
+        val error = values[3]
+        if (error == 0L) return Response(VERSION, request.id, values[2], null)
+        if (error !in ERROR_INVALID_ID.toLong()..ERROR_OVERFLOW.toLong() || values[2] != 0L) {
+            return null
+        }
+        return Response(VERSION, request.id, null, error.toInt())
+    }
 
     fun errorName(code: Int): String = when (code) {
         ERROR_INVALID_ID -> "invalid_task_id"
