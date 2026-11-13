@@ -55,14 +55,12 @@ fn start_managed_node(peer_address: Option<String>) -> Result<(i64, NodeInfo), S
                     return;
                 }
             };
-            if let Err(error) =
-                runtime.block_on(run_node(
-                    dial_address,
-                    None,
-                    Some(startup_tx),
-                    Some(stop_rx),
-                ))
-            {
+            if let Err(error) = runtime.block_on(run_node(
+                dial_address,
+                None,
+                Some(startup_tx),
+                Some(stop_rx),
+            )) {
                 eprintln!("p2p_node_failed={error}");
             }
         })
