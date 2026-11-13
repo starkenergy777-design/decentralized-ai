@@ -207,16 +207,14 @@ pub fn start_node<'caller>(
                 *target = *source as u8;
             }
             seed_bytes.fill(0);
-            let message = match start_managed_node(
-                Some(peer_address),
-                send_demo_addition != JNI_FALSE,
-                seed,
-            ) {
-                Ok((id, info)) => {
-                    format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
-                }
-                Err(error) => format!("error|{error}"),
-            };
+            let message =
+                match start_managed_node(Some(peer_address), send_demo_addition != JNI_FALSE, seed)
+                {
+                    Ok((id, info)) => {
+                        format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
+                    }
+                    Err(error) => format!("error|{error}"),
+                };
             Ok(env.new_string(message)?.into_raw())
         })
         .resolve::<ThrowRuntimeExAndDefault>()
@@ -247,3 +245,4 @@ pub fn stop_node<'caller>(
         JNI_FALSE
     }
 }
+
