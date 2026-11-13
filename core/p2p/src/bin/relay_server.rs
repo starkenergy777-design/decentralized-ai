@@ -59,8 +59,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .build();
 
     let tcp_address = address_from_env("DAI_RELAY_TCP_LISTEN", "/ip4/0.0.0.0/tcp/4001")?;
-    let quic_address =
-        address_from_env("DAI_RELAY_QUIC_LISTEN", "/ip4/0.0.0.0/udp/4001/quic-v1")?;
+    let quic_address = address_from_env("DAI_RELAY_QUIC_LISTEN", "/ip4/0.0.0.0/udp/4001/quic-v1")?;
     swarm.listen_on(tcp_address)?;
     swarm.listen_on(quic_address)?;
 

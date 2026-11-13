@@ -81,6 +81,7 @@ class P2pNodeController(
         chargingOnly: Boolean,
         computeEnabled: Boolean,
         peerAddress: String,
+        rendezvousAddress: String,
         sendDemoAddition: Boolean,
     ) {
         if (closed) return
@@ -111,7 +112,12 @@ class P2pNodeController(
                 acquireMulticastLockIfRequired()
                 val identitySeed = AndroidPeerIdentityStore.loadOrCreate(context)
                 val response = try {
-                    NativeTaskBridge.startNode(peerAddress.trim(), sendDemoAddition, identitySeed)
+                    NativeTaskBridge.startNode(
+                        peerAddress.trim(),
+                        rendezvousAddress.trim(),
+                        sendDemoAddition,
+                        identitySeed,
+                    )
                 } finally {
                     identitySeed.fill(0)
                 }
@@ -139,17 +145,19 @@ class P2pNodeController(
                 publish(
                     P2pNodeUiState(
                         phase = P2pNodePhase.RUNNING,
-                        message = if (peerAddress.isBlank()) {
+                        message = if (rendezvousAddress.isNotBlank()) {
+                            "კვანძი მუშაობს; საჯარო peer discovery/relay კავშირი მზადდება"
+                        } else if (peerAddress.isBlank()) {
                             "კვანძი მუშაობს წინა პლანზე და ლოკალურ ქსელში peer-ებს ეძებს"
                         } else if (sendDemoAddition) {
                             "კვანძი მუშაობს; peer-თან კავშირისა და 20 + 22 პასუხის მოლოდინშია"
                         } else {
                             "კვანძი მუშაობს; პირდაპირი დაკავშირების მცდელობა გაიგზავნა"
                         },
-                taskStatus = if (sendDemoAddition && peerAddress.isBlank()) {
-                    "ველოდები ლოკალურ ქსელში peer-ის აღმოჩენას"
-                } else if (sendDemoAddition) {
-                    "ველოდები peer-ის პასუხს"
+                        taskStatus = if (sendDemoAddition && peerAddress.isBlank() && rendezvousAddress.isBlank()) {
+                            "ველოდები ლოკალურ ქსელში peer-ის აღმოჩენას"
+                        } else if (sendDemoAddition) {
+                            "ველოდები peer-ის პასუხს"
                         } else {
                             null
                         },

@@ -6,9 +6,9 @@ rust-version.workspace = true
 
 [dependencies]
 futures = "0.3"
-libp2p = { version = "0.57.1", features = ["tokio", "tcp", "quic", "noise", "yamux", "ping", "identify", "mdns", "relay", "rendezvous", "request-response", "cbor", "macros"] }
+libp2p = { version = "0.57.1", features = ["tokio", "tcp", "quic", "dns", "noise", "yamux", "ping", "identify", "mdns", "relay", "rendezvous", "request-response", "cbor", "macros"] }
 decentralized-ai-task-protocol = { path = "../task-protocol" }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 
 [[bin]]
 name = "decentralized-ai-relay"

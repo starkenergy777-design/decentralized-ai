@@ -1,6 +1,6 @@
 # Self-hosted relay node
 
-The `decentralized-ai-relay` binary combines a Circuit Relay v2 service with a libp2p Rendezvous peer-discovery service over TCP and QUIC. Rendezvous registrations are limited to 4 per peer and 10,000 total, with bounded TTLs (60 seconds to 30 minutes) and a 4,096-cookie cache. It is not a DHT/bootstrap server, and the Android/desktop clients do not yet connect to this service or request relay reservations.
+The `decentralized-ai-relay` binary combines a Circuit Relay v2 service with a libp2p Rendezvous peer-discovery service over TCP and QUIC. Rendezvous registrations are limited to 4 per peer and 10,000 total, with bounded TTLs (60 seconds to 30 minutes) and a 4,096-cookie cache. Clients can be configured with this service's multiaddress, but no public instance is deployed by the project. This is not a Kademlia DHT/bootstrap server.
 
 ## Build and run with Docker
 
@@ -16,7 +16,9 @@ docker run --name decentralized-ai-relay --restart unless-stopped \
   decentralized-ai-relay
 ```
 
-The named volume stores the relay's protobuf-encoded Ed25519 identity. Keep that volume across restarts and protect it as a private key; losing it changes the relay Peer ID. The container runs as an unprivileged user. Startup logs show the Peer ID, listen addresses, and advertised multiaddresses.
+The named volume stores the relay's protobuf-encoded Ed25519 identity. Keep that volume across restarts and protect it as a private key; losing it changes the relay Peer ID. The container runs as an unprivileged user. Startup logs show the Peer ID, listen addresses, and advertised multiaddresses. A client can use the TCP endpoint as `/ip4/PUBLIC_IPV4/tcp/4001/p2p/RELAY_PEER_ID` or the QUIC endpoint as `/ip4/PUBLIC_IPV4/udp/4001/quic-v1/p2p/RELAY_PEER_ID`.
+
+For the CLI, set `DAI_RENDEZVOUS_ADDR` to that multiaddress before running `cargo run -p decentralized-ai-p2p`. In Android, paste it into the public relay/Rendezvous field. The client can then be reached through the relay and will query this server for other registered peers.
 
 ## Initial resource limits
 

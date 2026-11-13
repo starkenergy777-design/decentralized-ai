@@ -19,6 +19,7 @@ class NativeTaskBridge {
         @JvmStatic
         external fun startNode(
             peerAddress: String,
+            rendezvousAddress: String,
             sendDemoAddition: Boolean,
             identitySeed: ByteArray,
         ): String

@@ -2,7 +2,7 @@ use std::{collections::HashSet, error::Error, time::Duration};
 
 use futures::StreamExt;
 use libp2p::{
-    PeerId, StreamProtocol, identify, mdns, noise, ping, request_response,
+    PeerId, StreamProtocol, identify, mdns, noise, ping, relay, rendezvous, request_response,
     request_response::cbor::codec::Codec as CborCodec,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
@@ -21,6 +21,8 @@ struct Behaviour {
     identify: identify::Behaviour,
     mdns: mdns::tokio::Behaviour,
     ping: ping::Behaviour,
+    relay_client: relay::client::Behaviour,
+    rendezvous: rendezvous::client::Behaviour,
     task: request_response::cbor::Behaviour<TaskRequest, TaskResponse>,
 }
 
@@ -47,7 +49,12 @@ pub enum NodeEvent {
 }
 
 const MAX_TASK_MESSAGE_BYTES: u64 = 256;
-const MAX_MDNS_PEER_CONNECTIONS: usize = 8;
+const MAX_DISCOVERED_PEER_CONNECTIONS: usize = 8;
+const RENDEZVOUS_NAMESPACE: &str = "decentralized-ai";
+const RENDEZVOUS_REGISTRATION_TTL_SECONDS: u64 = 30 * 60;
+const RENDEZVOUS_PEER_LIMIT: u64 = 64;
+const RENDEZVOUS_REFRESH_SECONDS: u64 = 60;
+const RENDEZVOUS_REREGISTER_TICKS: u16 = 15;
 
 /// Runs one P2P node until its stop signal arrives or the swarm fails.
 pub async fn run_node(
@@ -57,6 +64,7 @@ pub async fn run_node(
     mut stop: Option<oneshot::Receiver<()>>,
     events: Option<std::sync::mpsc::Sender<NodeEvent>>,
     identity_seed: Option<[u8; 32]>,
+    rendezvous_server: Option<Multiaddr>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let identity_lifetime = if identity_seed.is_some() {
         "persistent (Android Keystore-protected seed)"
@@ -68,6 +76,12 @@ pub async fn run_node(
         None => libp2p::identity::Keypair::generate_ed25519(),
     };
     let peer_id = PeerId::from(identity.public());
+    let rendezvous_peer_id = match rendezvous_server.as_ref() {
+        Some(address) => Some(peer_id_in_multiaddr(address).ok_or(
+            "Rendezvous address must include /p2p/<server-peer-id>",
+        )?),
+        None => None,
+    };
     let identify_config = identify::Config::new("/ai/peer/1".to_owned(), identity.public());
     let mdns_behaviour = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id.clone())?;
     let task_codec = CborCodec::<TaskRequest, TaskResponse>::default()
@@ -90,10 +104,14 @@ pub async fn run_node(
             yamux::Config::default,
         )?
         .with_quic()
-        .with_behaviour(|_| Behaviour {
+        .with_dns()?
+        .with_relay_client(noise::Config::new, yamux::Config::default)?
+        .with_behaviour(|keypair, relay_client| Behaviour {
             identify: identify::Behaviour::new(identify_config),
             mdns: mdns_behaviour,
             ping: ping::Behaviour::default(),
+            relay_client,
+            rendezvous: rendezvous::client::Behaviour::new(keypair.clone()),
             task: task_behaviour,
         })?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(60)))
@@ -103,9 +121,24 @@ pub async fn run_node(
     let quic_address: Multiaddr = "/ip4/0.0.0.0/udp/0/quic-v1".parse()?;
     swarm.listen_on(tcp_address)?;
     swarm.listen_on(quic_address)?;
+    if let (Some(address), Some(_)) = (rendezvous_server.as_ref(), rendezvous_peer_id.as_ref()) {
+        let circuit_address = address
+            .clone()
+            .with(libp2p::multiaddr::Protocol::P2pCircuit);
+        swarm.listen_on(circuit_address)?;
+        swarm.dial(address.clone())?;
+        println!("rendezvous_server={address}");
+    }
     println!("node_id={peer_id}");
     println!("identity_lifetime={identity_lifetime}");
     let mut dialing_discovered_peers = HashSet::new();
+    let mut rendezvous_connected = false;
+    let mut rendezvous_cookie: Option<rendezvous::Cookie> = None;
+    let mut rendezvous_refresh = tokio::time::interval(Duration::from_secs(
+        RENDEZVOUS_REFRESH_SECONDS,
+    ));
+    rendezvous_refresh.tick().await;
+    let mut rendezvous_ticks = 0_u16;
 
     if let Some(address) = dial_address {
         swarm.dial(address.clone())?;
@@ -115,18 +148,69 @@ pub async fn run_node(
     let mut startup_reported = false;
     let expected_task_id = pending_task.as_ref().map(|request| request.id);
     loop {
-        let event = if let Some(stop_receiver) = stop.as_mut() {
-            tokio::select! {
-                _ = stop_receiver => break,
-                event = swarm.select_next_some() => event,
+        let event = tokio::select! {
+            _ = async {
+                if let Some(stop_receiver) = stop.as_mut() {
+                    let _ = stop_receiver.await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            } => break,
+            _ = rendezvous_refresh.tick(), if rendezvous_server.is_some() => {
+                if !rendezvous_connected {
+                    if let Some(address) = rendezvous_server.as_ref() {
+                        if let Err(error) = swarm.dial(address.clone()) {
+                            eprintln!("rendezvous_reconnect_failed={error}");
+                        }
+                    }
+                } else {
+                    rendezvous_ticks = rendezvous_ticks.wrapping_add(1);
+                    if rendezvous_ticks % RENDEZVOUS_REREGISTER_TICKS == 0 {
+                        if let Some(rendezvous_peer_id) = rendezvous_peer_id.as_ref() {
+                            let registration = swarm.behaviour_mut().rendezvous.register(
+                                rendezvous::Namespace::from_static(RENDEZVOUS_NAMESPACE),
+                                rendezvous_peer_id.clone(),
+                                Some(RENDEZVOUS_REGISTRATION_TTL_SECONDS),
+                            );
+                            if let Err(error) = registration {
+                                eprintln!("rendezvous_register_failed={error:?}");
+                            }
+                        }
+                    }
+                    if let Some(rendezvous_peer_id) = rendezvous_peer_id.as_ref() {
+                        swarm.behaviour_mut().rendezvous.discover(
+                            Some(rendezvous::Namespace::from_static(RENDEZVOUS_NAMESPACE)),
+                            rendezvous_cookie.take(),
+                            Some(RENDEZVOUS_PEER_LIMIT),
+                            rendezvous_peer_id.clone(),
+                        );
+                    }
+                }
+                continue;
             }
-        } else {
-            swarm.select_next_some().await
+            event = swarm.select_next_some() => event,
         };
 
         match event {
             SwarmEvent::NewListenAddr { address, .. } => {
                 println!("listening_on={address}");
+                if rendezvous_server.is_some()
+                    && address
+                        .iter()
+                        .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::P2pCircuit))
+                {
+                    swarm.add_external_address(address.clone());
+                    if let Some(rendezvous_peer_id) = rendezvous_peer_id.as_ref() {
+                        let registration = swarm.behaviour_mut().rendezvous.register(
+                            rendezvous::Namespace::from_static(RENDEZVOUS_NAMESPACE),
+                            rendezvous_peer_id.clone(),
+                            Some(RENDEZVOUS_REGISTRATION_TTL_SECONDS),
+                        );
+                        if let Err(error) = registration {
+                            eprintln!("rendezvous_register_failed={error:?}");
+                        }
+                    }
+                }
                 if !startup_reported {
                     startup_reported = true;
                     if let Some(startup) = startup.as_ref() {
@@ -143,7 +227,18 @@ pub async fn run_node(
                 dialing_discovered_peers.remove(&peer_id);
                 println!("connected={peer_id}");
                 report_event(&events, NodeEvent::PeerConnected(peer_id.to_string()));
-                if endpoint.is_dialer() {
+                if rendezvous_peer_id.as_ref() == Some(&peer_id) {
+                    rendezvous_connected = true;
+                    swarm.behaviour_mut().rendezvous.discover(
+                        Some(rendezvous::Namespace::from_static(RENDEZVOUS_NAMESPACE)),
+                        rendezvous_cookie.take(),
+                        Some(RENDEZVOUS_PEER_LIMIT),
+                        peer_id.clone(),
+                    );
+                }
+                if endpoint.is_dialer()
+                    && rendezvous_peer_id.as_ref() != Some(&peer_id)
+                {
                     if let Some(request) = pending_task.take() {
                         let task_id = request.id;
                         let request_id = swarm.behaviour_mut().task.send_request(&peer_id, request);
@@ -154,6 +249,9 @@ pub async fn run_node(
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 println!("disconnected={peer_id} cause={cause:?}");
+                if rendezvous_peer_id.as_ref() == Some(&peer_id) {
+                    rendezvous_connected = false;
+                }
                 report_event(&events, NodeEvent::PeerDisconnected(peer_id.to_string()));
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
@@ -172,7 +270,7 @@ pub async fn run_node(
                     if swarm.is_connected(&peer_id)
                         || dialing_discovered_peers.contains(&peer_id)
                         || swarm.connected_peers().count() + dialing_discovered_peers.len()
-                            >= MAX_MDNS_PEER_CONNECTIONS
+                            >= MAX_DISCOVERED_PEER_CONNECTIONS
                     {
                         continue;
                     }
@@ -194,6 +292,65 @@ pub async fn run_node(
                     println!("peer_discovery_expired={peer_id} address={address}");
                 }
             }
+            SwarmEvent::Behaviour(BehaviourEvent::Rendezvous(event)) => match event {
+                rendezvous::client::Event::Discovered {
+                    registrations,
+                    cookie,
+                    ..
+                } => {
+                    rendezvous_cookie = Some(cookie);
+                    for registration in registrations {
+                        let discovered_peer = registration.record.peer_id();
+                        if discovered_peer == peer_id {
+                            continue;
+                        }
+                        report_event(
+                            &events,
+                            NodeEvent::PeerDiscovered(discovered_peer.to_string()),
+                        );
+                        if swarm.is_connected(&discovered_peer)
+                            || dialing_discovered_peers.contains(&discovered_peer)
+                            || swarm.connected_peers().count() + dialing_discovered_peers.len()
+                                >= MAX_DISCOVERED_PEER_CONNECTIONS
+                        {
+                            continue;
+                        }
+
+                        println!("rendezvous_peer_discovered={discovered_peer}; connecting");
+                        dialing_discovered_peers.insert(discovered_peer);
+                        if let Err(error) = swarm.dial(discovered_peer) {
+                            dialing_discovered_peers.remove(&discovered_peer);
+                            eprintln!(
+                                "rendezvous_peer_dial_failed peer={discovered_peer} error={error}"
+                            );
+                            report_event(
+                                &events,
+                                NodeEvent::ConnectionFailed(Some(discovered_peer.to_string())),
+                            );
+                        }
+                    }
+                }
+                rendezvous::client::Event::Registered { rendezvous_node, .. } => {
+                    println!("rendezvous_registered={rendezvous_node}");
+                }
+                rendezvous::client::Event::RegisterFailed {
+                    rendezvous_node,
+                    error,
+                    ..
+                } => {
+                    eprintln!("rendezvous_register_failed node={rendezvous_node} error={error:?}");
+                }
+                rendezvous::client::Event::DiscoverFailed {
+                    rendezvous_node,
+                    error,
+                    ..
+                } => {
+                    eprintln!("rendezvous_discover_failed node={rendezvous_node} error={error:?}");
+                }
+                rendezvous::client::Event::Expired { peer } => {
+                    println!("rendezvous_registration_expired={peer}");
+                }
+            },
             SwarmEvent::Behaviour(BehaviourEvent::Task(event)) => match event {
                 request_response::Event::Message { peer, message, .. } => match message {
                     request_response::Message::Request {
@@ -268,6 +425,13 @@ fn report_event(events: &Option<std::sync::mpsc::Sender<NodeEvent>>, event: Node
     if let Some(events) = events {
         let _ = events.send(event);
     }
+}
+
+fn peer_id_in_multiaddr(address: &Multiaddr) -> Option<PeerId> {
+    address.iter().find_map(|protocol| match protocol {
+        libp2p::multiaddr::Protocol::P2p(peer_id) => Some(peer_id),
+        _ => None,
+    })
 }
 
 #[cfg(test)]

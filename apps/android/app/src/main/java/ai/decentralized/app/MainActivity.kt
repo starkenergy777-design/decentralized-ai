@@ -115,6 +115,7 @@ private fun ResourceSettingsScreen(
         mutableStateOf(preferences.getBoolean(ResourcePolicy.CHARGING_ONLY, true))
     }
     var peerAddress by remember { mutableStateOf("") }
+    var rendezvousAddress by remember { mutableStateOf("") }
     var sendDemoAddition by remember { mutableStateOf(false) }
     val p2pState by p2pNodeState
 
@@ -149,14 +150,14 @@ private fun ResourceSettingsScreen(
         HorizontalDivider()
         Text("P2P კვანძი", style = MaterialTheme.typography.titleMedium)
         Text(
-            "ჩართვის შემდეგ ტელეფონი გახსნის ქსელურ კვანძს და იმავე Wi-Fi ქსელში peer-ებს ავტომატურად მოძებნის. ამ დროს Peer ID ლოკალურ ქსელში გამოჩნდება. კვანძი მუშაობს მხოლოდ ამ ეკრანის წინა პლანზე ყოფნისას და არჩეული პირობების დაცვით.",
+            "ჩართვის შემდეგ ტელეფონი გახსნის ქსელურ კვანძს. ერთ Wi-Fi ქსელში peer-ებს ავტომატურად მოძებნის; სხვა ქსელიდან დასაკავშირებლად ჩასვით საჯარო relay/Rendezvous სერვერის მისამართი. მობილური ინტერნეტი მუშაობს, თუ Wi-Fi-only გამორთულია და სერვერი საჯაროდ ხელმისაწვდომია. კვანძი მუშაობს ეკრანის წინა პლანზე და არჩეული პირობებით.",
             style = MaterialTheme.typography.bodyMedium,
         )
         OutlinedTextField(
             value = peerAddress,
             onValueChange = { peerAddress = it },
             label = { Text("სხვა კვანძის მისამართი (არასავალდებულო)") },
-            placeholder = { Text("/ip4/192.168.1.20/tcp/40000") },
+            placeholder = { Text("/ip4/192.168.1.20/tcp/40000/p2p/12D3KooW…") },
             singleLine = true,
             enabled = p2pState.phase != P2pNodePhase.RUNNING &&
                 p2pState.phase != P2pNodePhase.STARTING &&
@@ -165,6 +166,21 @@ private fun ResourceSettingsScreen(
         )
         Text(
             "ერთ Wi-Fi ქსელში ორივე კვანძის ჩართვისას ისინი ავტომატურად იპოვიან ერთმანეთს. სურვილისამებრ ჩასვით პირდაპირ მისაწვდომი peer-ის მისამართი; მისამართის გარეშე დემო ამოცანა პირველ აღმოჩენილ peer-ს გაეგზავნება.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(
+            value = rendezvousAddress,
+            onValueChange = { rendezvousAddress = it },
+            label = { Text("საჯარო relay/Rendezvous მისამართი (არასავალდებულო)") },
+            placeholder = { Text("/ip4/203.0.113.10/tcp/4001/p2p/12D3KooW…") },
+            singleLine = true,
+            enabled = p2pState.phase != P2pNodePhase.RUNNING &&
+                p2pState.phase != P2pNodePhase.STARTING &&
+                p2pState.phase != P2pNodePhase.STOPPING,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "მისამართი უნდა ეკუთვნოდეს გაშვებულ საჯარო სერვერს და შეიცავდეს მის Peer ID-ს. პროექტის სერვერი ჯერ საჯაროდ არ არის განთავსებული.",
             style = MaterialTheme.typography.bodySmall,
         )
         PolicySwitch(
@@ -185,6 +201,7 @@ private fun ResourceSettingsScreen(
                         chargingOnly,
                         cpuBudget > 0,
                         peerAddress,
+                        rendezvousAddress,
                         sendDemoAddition,
                     )
                 }
@@ -214,7 +231,7 @@ private fun ResourceSettingsScreen(
             }
         }
         Text(
-            "ადგილობრივი აღმოჩენა მუშაობს მხოლოდ ერთ LAN/Wi-Fi ქსელში; სხვა ქსელებს შორის NAT traversal და relay ჯერ არ არის. ამ ეტაპზე კვანძები ასრულებენ მხოლოდ მცირე არითმეტიკულ პროტოკოლს — AI მოდელის განაწილებული inference ჯერ არ არის ჩართული.",
+            "კლიენტს უკვე შეუძლია საჯარო relay/Rendezvous მისამართით peer-ების მოძებნა და relay-ის გავლით დაკავშირება; პროექტის საჯარო სერვერი ჯერ არ არის გაშვებული. პირდაპირი NAT hole-punching (DCUtR) და AI მოდელის inference შემდეგი ეტაპებია.",
             style = MaterialTheme.typography.bodySmall,
         )
         Text(

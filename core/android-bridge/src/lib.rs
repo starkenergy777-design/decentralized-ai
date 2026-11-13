@@ -37,6 +37,7 @@ fn nodes() -> &'static Mutex<HashMap<i64, ManagedNode>> {
 
 fn start_managed_node(
     peer_address: Option<String>,
+    rendezvous_address: Option<String>,
     send_demo_addition: bool,
     identity_seed: [u8; 32],
 ) -> Result<(i64, NodeInfo), String> {
@@ -47,6 +48,14 @@ fn start_managed_node(
             address
                 .parse::<Multiaddr>()
                 .map_err(|error| format!("invalid peer multiaddress: {error}"))
+        })
+        .transpose()?;
+    let rendezvous_server = rendezvous_address
+        .filter(|address| !address.trim().is_empty())
+        .map(|address| {
+            address
+                .parse::<Multiaddr>()
+                .map_err(|error| format!("invalid public relay/Rendezvous multiaddress: {error}"))
         })
         .transpose()?;
     let id = NEXT_NODE_ID.fetch_add(1, Ordering::Relaxed);
@@ -81,6 +90,7 @@ fn start_managed_node(
                 Some(stop_rx),
                 Some(event_tx),
                 Some(*identity_seed),
+                rendezvous_server,
             )) {
                 eprintln!("p2p_node_failed={error}");
             }
@@ -187,12 +197,14 @@ pub fn start_node<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     peer_address: jni::objects::JString<'caller>,
+    rendezvous_address: jni::objects::JString<'caller>,
     send_demo_addition: jboolean,
     identity_seed: JByteArray<'caller>,
 ) -> jstring {
     unowned_env
         .with_env(|env| -> jni::errors::Result<jstring> {
             let peer_address = peer_address.try_to_string(env)?;
+            let rendezvous_address = rendezvous_address.try_to_string(env)?;
             if identity_seed.len(env)? != 32 {
                 return Ok(env
                     .new_string("error|Android identity seed must contain exactly 32 bytes")?
@@ -205,14 +217,17 @@ pub fn start_node<'caller>(
                 *target = *source as u8;
             }
             seed_bytes.fill(0);
-            let message =
-                match start_managed_node(Some(peer_address), send_demo_addition != JNI_FALSE, seed)
-                {
-                    Ok((id, info)) => {
-                        format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
-                    }
-                    Err(error) => format!("error|{error}"),
-                };
+            let message = match start_managed_node(
+                Some(peer_address),
+                Some(rendezvous_address),
+                send_demo_addition != JNI_FALSE,
+                seed,
+            ) {
+                Ok((id, info)) => {
+                    format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
+                }
+                Err(error) => format!("error|{error}"),
+            };
             Ok(env.new_string(message)?.into_raw())
         })
         .resolve::<ThrowRuntimeExAndDefault>()

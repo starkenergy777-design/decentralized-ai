@@ -10,6 +10,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .next()
         .map(|address| address.parse::<Multiaddr>())
         .transpose()?;
+    let rendezvous_server = std::env::var("DAI_RENDEZVOUS_ADDR")
+        .ok()
+        .filter(|address| !address.trim().is_empty())
+        .map(|address| address.parse::<Multiaddr>())
+        .transpose()?;
     let pending_task = match args.next().as_deref() {
         Some("--add") => {
             let left = args
@@ -32,7 +37,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         None => None,
     };
 
-    run_node(dial_address, pending_task, None, None, None, None).await
+    run_node(
+        dial_address,
+        pending_task,
+        None,
+        None,
+        None,
+        None,
+        rendezvous_server,
+    )
+    .await
 }
 
 #[cfg(test)]
