@@ -2,15 +2,15 @@
 
 ## Milestone 1 — architecture and P2P prototype
 
-- [ ] Versioned Rust workspace and documented module boundaries.
+- [x] Versioned Rust workspace and documented module boundaries.
 - [ ] Two nodes create distinct stable identities.
-- [ ] Nodes establish an authenticated encrypted libp2p connection.
-- [ ] A bounded ping/identify exchange completes between two local processes.
-- [ ] One peer can request a bounded checked-add task and receive its result from another peer.
-- [ ] Integer overflow returns no result instead of wrapping.
+- [x] Nodes establish an authenticated encrypted libp2p connection.
+- [x] A bounded ping/identify exchange completes between two local processes.
+- [x] One peer can request a bounded checked-add task and receive its result from another peer.
+- [x] Integer overflow returns no result instead of wrapping.
 - [ ] Malformed and oversized messages are rejected before application processing.
-- [ ] CI compiles the Rust workspace and runs its automated checks.
-- [ ] Documentation clearly marks governance, attestation, biometrics, AI training, and self-improvement as unimplemented.
+- [x] CI compiles the Rust workspace and runs its automated checks.
+- [x] Documentation clearly marks governance, attestation, biometrics, AI training, and self-improvement as unimplemented.
 
 ## Later milestones
 
