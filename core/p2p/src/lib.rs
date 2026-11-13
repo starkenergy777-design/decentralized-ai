@@ -168,10 +168,7 @@ pub async fn run_node(
             }
             SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
                 for (peer_id, address) in peers {
-                    report_event(
-                        &events,
-                        NodeEvent::PeerDiscovered(peer_id.to_string()),
-                    );
+                    report_event(&events, NodeEvent::PeerDiscovered(peer_id.to_string()));
                     if swarm.is_connected(&peer_id)
                         || dialing_discovered_peers.contains(&peer_id)
                         || swarm.connected_peers().count() + dialing_discovered_peers.len()
