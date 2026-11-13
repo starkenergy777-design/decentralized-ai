@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
     sync::{
-        mpsc::Receiver, Mutex, OnceLock,
+        Mutex, OnceLock,
         atomic::{AtomicI64, Ordering},
+        mpsc::Receiver,
     },
     thread,
     time::Duration,
@@ -189,15 +190,13 @@ pub fn start_node<'caller>(
     unowned_env
         .with_env(|env| -> jni::errors::Result<jstring> {
             let peer_address = peer_address.try_to_string(env)?;
-            let message = match start_managed_node(
-                Some(peer_address),
-                send_demo_addition != JNI_FALSE,
-            ) {
-                Ok((id, info)) => {
-                    format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
-                }
-                Err(error) => format!("error|{error}"),
-            };
+            let message =
+                match start_managed_node(Some(peer_address), send_demo_addition != JNI_FALSE) {
+                    Ok((id, info)) => {
+                        format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
+                    }
+                    Err(error) => format!("error|{error}"),
+                };
             Ok(env.new_string(message)?.into_raw())
         })
         .resolve::<ThrowRuntimeExAndDefault>()

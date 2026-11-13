@@ -221,10 +221,7 @@ pub async fn run_node(
     Ok(())
 }
 
-fn report_event(
-    events: &Option<std::sync::mpsc::Sender<NodeEvent>>,
-    event: NodeEvent,
-) {
+fn report_event(events: &Option<std::sync::mpsc::Sender<NodeEvent>>, event: NodeEvent) {
     if let Some(events) = events {
         let _ = events.send(event);
     }
