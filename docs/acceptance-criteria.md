@@ -14,8 +14,9 @@
 
 ## Later milestones
 
-- [ ] Android app builds a debug APK in CI.
-- [ ] Resource preference screen defaults compute opt-in to off and persists the user's selected budgets locally.
+- [x] Android app builds a debug APK in CI.
+- [x] Resource preference screen defaults compute opt-in to off and persists the user's selected budgets locally.
+- [ ] Local WorkManager demo obeys opt-in, charging/unmetered-network constraints, low-battery restrictions, and cancellation; it does not yet process P2P tasks.
 - [ ] Background compute enforces the selected limits, responds to thermal/battery/network constraints, and can be stopped immediately.
 - [ ] Task sandboxing, cancellation, resource quotas, and independent result verification.
 - [ ] Android and desktop interoperation, reconnect, discovery, and NAT scenarios.
@@ -26,3 +27,4 @@
 - [ ] Generated code is tested without network access or secrets and requires approval before release.
 
 No item is complete until demonstrated in a reproducible environment and recorded with evidence.
+
