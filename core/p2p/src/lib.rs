@@ -29,6 +29,21 @@ pub struct NodeInfo {
     pub listen_address: String,
 }
 
+#[derive(Clone, Debug)]
+pub enum NodeEvent {
+    PeerConnected(String),
+    PeerDisconnected(String),
+    ConnectionFailed(Option<String>),
+    TaskSent(i64),
+    TaskFailed,
+    TaskReceived(i64),
+    TaskResponse {
+        id: i64,
+        result: Option<i64>,
+        error: Option<u8>,
+    },
+}
+
 const MAX_TASK_MESSAGE_BYTES: u64 = 256;
 
 /// Runs one P2P node until its stop signal arrives or the swarm fails.
@@ -37,6 +52,7 @@ pub async fn run_node(
     mut pending_task: Option<TaskRequest>,
     startup: Option<std::sync::mpsc::Sender<NodeInfo>>,
     mut stop: Option<oneshot::Receiver<()>>,
+    events: Option<std::sync::mpsc::Sender<NodeEvent>>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let identity = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(identity.public());
@@ -86,6 +102,7 @@ pub async fn run_node(
     }
 
     let mut startup_reported = false;
+    let expected_task_id = pending_task.as_ref().map(|request| request.id);
     loop {
         let event = if let Some(stop_receiver) = stop.as_mut() {
             tokio::select! {
@@ -109,23 +126,40 @@ pub async fn run_node(
                     }
                 }
             }
-            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+            SwarmEvent::ConnectionEstablished {
+                peer_id, endpoint, ..
+            } => {
                 println!("connected={peer_id}");
-                if let Some(request) = pending_task.take() {
-                    let request_id = swarm.behaviour_mut().task.send_request(&peer_id, request);
-                    println!("task_request_sent={request_id:?} peer={peer_id}");
+                report_event(&events, NodeEvent::PeerConnected(peer_id.to_string()));
+                if endpoint.is_dialer() {
+                    if let Some(request) = pending_task.take() {
+                        let task_id = request.id;
+                        let request_id = swarm.behaviour_mut().task.send_request(&peer_id, request);
+                        println!("task_request_sent={request_id:?} peer={peer_id}");
+                        report_event(&events, NodeEvent::TaskSent(task_id));
+                    }
                 }
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 println!("disconnected={peer_id} cause={cause:?}");
+                report_event(&events, NodeEvent::PeerDisconnected(peer_id.to_string()));
+            }
+            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                eprintln!("connection_failed peer={peer_id:?} error={error}");
+                report_event(
+                    &events,
+                    NodeEvent::ConnectionFailed(peer_id.map(|peer| peer.to_string())),
+                );
             }
             SwarmEvent::Behaviour(BehaviourEvent::Task(event)) => match event {
                 request_response::Event::Message { peer, message, .. } => match message {
                     request_response::Message::Request {
                         request, channel, ..
                     } => {
+                        let request_id = request.id;
                         let response = execute_task(request);
-                        println!("task_received id={} peer={peer}", request.id);
+                        println!("task_received id={request_id} peer={peer}");
+                        report_event(&events, NodeEvent::TaskReceived(request_id));
                         if swarm
                             .behaviour_mut()
                             .task
@@ -138,19 +172,40 @@ pub async fn run_node(
                     request_response::Message::Response {
                         request_id,
                         response,
-                    } => println!(
-                        "task_response request={request_id:?} id={} result={:?} error={:?}",
-                        response.id, response.result, response.error
-                    ),
+                    } => {
+                        println!(
+                            "task_response request={request_id:?} id={} result={:?} error={:?}",
+                            response.id, response.result, response.error
+                        );
+                        if response.version == TASK_VERSION
+                            && Some(response.id) == expected_task_id
+                            && response.result.is_some() != response.error.is_some()
+                        {
+                            report_event(
+                                &events,
+                                NodeEvent::TaskResponse {
+                                    id: response.id,
+                                    result: response.result,
+                                    error: response.error,
+                                },
+                            );
+                        } else {
+                            eprintln!("task_response_invalid request={request_id:?}");
+                            report_event(&events, NodeEvent::TaskFailed);
+                        }
+                    }
                 },
                 request_response::Event::OutboundFailure {
                     peer,
                     request_id,
                     error,
                     ..
-                } => eprintln!(
-                    "task_request_failed request={request_id:?} peer={peer} error={error}"
-                ),
+                } => {
+                    eprintln!(
+                        "task_request_failed request={request_id:?} peer={peer} error={error}"
+                    );
+                    report_event(&events, NodeEvent::TaskFailed);
+                }
                 request_response::Event::InboundFailure { peer, error, .. } => {
                     eprintln!("task_request_rejected peer={peer} error={error}");
                 }
@@ -164,6 +219,15 @@ pub async fn run_node(
     }
 
     Ok(())
+}
+
+fn report_event(
+    events: &Option<std::sync::mpsc::Sender<NodeEvent>>,
+    event: NodeEvent,
+) {
+    if let Some(events) = events {
+        let _ = events.send(event);
+    }
 }
 
 #[cfg(test)]

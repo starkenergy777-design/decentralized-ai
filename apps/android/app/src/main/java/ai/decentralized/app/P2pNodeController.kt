@@ -18,6 +18,9 @@ data class P2pNodeUiState(
     val message: String = "კვანძი გამორთულია",
     val peerId: String? = null,
     val listenAddress: String? = null,
+    val connectedPeer: String? = null,
+    val taskStatus: String? = null,
+    val taskResult: String? = null,
 )
 
 /** Runs JNI startup and shutdown away from Android's main thread. */
@@ -34,12 +37,28 @@ class P2pNodeController(
     @Volatile
     private var closed = false
 
+    private var currentUiState = P2pNodeUiState()
+
     private var wifiOnly = true
     private var chargingOnly = true
     private var computeEnabled = true
 
-    // Accessed only by executor tasks.
+    @Volatile
     private var activeNodeHandle: Long? = null
+
+    private val eventPoll = object : Runnable {
+        override fun run() {
+            val handle = activeNodeHandle
+            if (!desiredRunning || handle == null) return
+            try {
+                val event = NativeTaskBridge.pollNodeEvent(handle)
+                if (event.isNotEmpty()) consumeNodeEvent(event)
+            } catch (error: Exception) {
+                updateUi { it.copy(message = error.message ?: "კვანძის სტატუსის წაკითხვა ვერ მოხერხდა") }
+            }
+            if (desiredRunning) mainHandler.postDelayed(this, 500)
+        }
+    }
 
     private val policyMonitor = object : Runnable {
         override fun run() {
@@ -58,6 +77,7 @@ class P2pNodeController(
         chargingOnly: Boolean,
         computeEnabled: Boolean,
         peerAddress: String,
+        sendDemoAddition: Boolean,
     ) {
         if (closed) return
         this.wifiOnly = wifiOnly
@@ -67,14 +87,33 @@ class P2pNodeController(
             publish(P2pNodeUiState(P2pNodePhase.ERROR, it))
             return
         }
+        if (sendDemoAddition && peerAddress.isBlank()) {
+            publish(
+                P2pNodeUiState(
+                    P2pNodePhase.ERROR,
+                    "დემო შეკრების გასაგზავნად შეიყვანეთ სხვა კვანძის მისამართი.",
+                ),
+            )
+            return
+        }
         desiredRunning = true
         mainHandler.removeCallbacks(policyMonitor)
         mainHandler.postDelayed(policyMonitor, 10_000)
-        publish(P2pNodeUiState(P2pNodePhase.STARTING, "P2P კვანძი ეშვება…"))
+        publish(
+            P2pNodeUiState(
+                phase = P2pNodePhase.STARTING,
+                message = "P2P კვანძი ეშვება…",
+                taskStatus = if (sendDemoAddition) {
+                    "20 + 22 მოთხოვნა გაიგზავნება კავშირის დამყარების შემდეგ"
+                } else {
+                    null
+                },
+            ),
+        )
         executor.execute {
             if (!desiredRunning) return@execute
             try {
-                val response = NativeTaskBridge.startNode(peerAddress.trim())
+                val response = NativeTaskBridge.startNode(peerAddress.trim(), sendDemoAddition)
                 val parts = response.split('|', limit = 4)
                 if (parts.firstOrNull() != "ok" || parts.size != 4) {
                     if (desiredRunning) {
@@ -99,13 +138,21 @@ class P2pNodeController(
                         phase = P2pNodePhase.RUNNING,
                         message = if (peerAddress.isBlank()) {
                             "კვანძი მუშაობს — მხოლოდ ეკრანის წინა პლანზე"
+                        } else if (sendDemoAddition) {
+                            "კვანძი მუშაობს; peer-თან კავშირისა და 20 + 22 პასუხის მოლოდინშია"
                         } else {
                             "კვანძი მუშაობს; პირდაპირი დაკავშირების მცდელობა გაიგზავნა"
+                        },
+                        taskStatus = if (sendDemoAddition) {
+                            "ველოდები peer-ის პასუხს"
+                        } else {
+                            null
                         },
                         peerId = parts[2],
                         listenAddress = dialableListenAddress(parts[3]),
                     ),
                 )
+                mainHandler.post(eventPoll)
             } catch (error: Exception) {
                 if (desiredRunning) {
                     publish(
@@ -131,6 +178,7 @@ class P2pNodeController(
     fun stop(finalMessage: String? = null) {
         desiredRunning = false
         mainHandler.removeCallbacks(policyMonitor)
+        mainHandler.removeCallbacks(eventPoll)
         publish(P2pNodeUiState(P2pNodePhase.STOPPING, "P2P კვანძი ჩერდება…"))
         if (!closed) {
             executor.execute {
@@ -146,6 +194,7 @@ class P2pNodeController(
         closed = true
         desiredRunning = false
         mainHandler.removeCallbacks(policyMonitor)
+        mainHandler.removeCallbacks(eventPoll)
         executor.execute {
             activeNodeHandle?.let { NativeTaskBridge.stopNode(it) }
             activeNodeHandle = null
@@ -154,7 +203,68 @@ class P2pNodeController(
     }
 
     private fun publish(state: P2pNodeUiState) {
-        mainHandler.post { onStateChanged(state) }
+        mainHandler.post {
+            currentUiState = state
+            onStateChanged(state)
+        }
+    }
+
+    private fun updateUi(transform: (P2pNodeUiState) -> P2pNodeUiState) {
+        mainHandler.post {
+            val state = transform(currentUiState)
+            currentUiState = state
+            onStateChanged(state)
+        }
+    }
+
+    private fun consumeNodeEvent(event: String) {
+        if (event == "node_closed") {
+            stop("P2P კვანძი მოულოდნელად გაითიშა")
+            return
+        }
+        val fields = event.split('|', limit = 4)
+        val state = when (fields.firstOrNull()) {
+            "connected" -> currentUiState.copy(
+                message = "peer-თან კავშირი დამყარდა",
+                connectedPeer = fields.getOrNull(1),
+            )
+            "disconnected" -> currentUiState.copy(
+                message = "peer-თან კავშირი დაიხურა",
+                connectedPeer = null,
+            )
+            "connection_failed" -> currentUiState.copy(
+                message = "peer-თან კავშირი ვერ დამყარდა; შეამოწმეთ მისამართი და ქსელი",
+                connectedPeer = null,
+            )
+            "task_sent" -> currentUiState.copy(
+                taskStatus = "დემო ამოცანა გაიგზავნა (ID ${fields.getOrNull(1)})",
+            )
+            "task_failed" -> currentUiState.copy(
+                message = "დემო ამოცანა ვერ შესრულდა ან პასუხი ვერ დადასტურდა",
+                taskStatus = "შეამოწმეთ peer-ის მისამართი და კავშირის მდგომარეობა",
+            )
+            "task_received" -> currentUiState.copy(
+                taskStatus = "მიღებულია peer-ის ამოცანა (ID ${fields.getOrNull(1)})",
+            )
+            "task_response" -> {
+                val result = fields.getOrNull(2).orEmpty()
+                val errorText = fields.getOrNull(3).orEmpty()
+                val resultText = when {
+                    errorText.isEmpty() && result.isNotEmpty() -> result
+                    errorText.isNotEmpty() && errorText.toIntOrNull() != null ->
+                        "შეცდომა: ${TaskProtocol.errorName(errorText.toInt())}"
+                    else -> "პასუხი არასწორია"
+                }
+                currentUiState.copy(
+                    message = "დისტანციური ამოცანა დასრულდა",
+                    taskStatus = "დემო შეკრება (ID ${fields.getOrNull(1)})",
+                    taskResult = resultText,
+                )
+            }
+            else -> currentUiState
+        }
+        currentUiState = state
+        onStateChanged(state)
     }
 
     private fun policyFailure(): String? {

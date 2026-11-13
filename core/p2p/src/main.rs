@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         None => None,
     };
 
-    run_node(dial_address, pending_task, None, None).await
+    run_node(dial_address, pending_task, None, None, None).await
 }
 
 #[cfg(test)]

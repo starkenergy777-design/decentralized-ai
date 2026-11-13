@@ -1,14 +1,16 @@
 use std::{
     collections::HashMap,
     sync::{
-        Mutex, OnceLock,
+        mpsc::Receiver, Mutex, OnceLock,
         atomic::{AtomicI64, Ordering},
     },
     thread,
     time::Duration,
 };
 
-use decentralized_ai_p2p::{Multiaddr, NodeInfo, execute_task, run_node};
+use decentralized_ai_p2p::{
+    Multiaddr, NodeEvent, NodeInfo, OP_ADD, TASK_VERSION, execute_task, run_node,
+};
 use decentralized_ai_task_protocol::TaskRequest as ProtocolTaskRequest;
 use jni::{
     EnvUnowned,
@@ -21,6 +23,7 @@ use tokio::sync::oneshot;
 struct ManagedNode {
     stop: oneshot::Sender<()>,
     thread: thread::JoinHandle<()>,
+    events: Receiver<NodeEvent>,
 }
 
 static NEXT_NODE_ID: AtomicI64 = AtomicI64::new(1);
@@ -30,7 +33,10 @@ fn nodes() -> &'static Mutex<HashMap<i64, ManagedNode>> {
     NODES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn start_managed_node(peer_address: Option<String>) -> Result<(i64, NodeInfo), String> {
+fn start_managed_node(
+    peer_address: Option<String>,
+    send_demo_addition: bool,
+) -> Result<(i64, NodeInfo), String> {
     let dial_address = peer_address
         .filter(|address| !address.trim().is_empty())
         .map(|address| {
@@ -39,8 +45,20 @@ fn start_managed_node(peer_address: Option<String>) -> Result<(i64, NodeInfo), S
                 .map_err(|error| format!("invalid peer multiaddress: {error}"))
         })
         .transpose()?;
+    if send_demo_addition && dial_address.is_none() {
+        return Err("enter a peer multiaddress before sending the demo task".to_owned());
+    }
+    let id = NEXT_NODE_ID.fetch_add(1, Ordering::Relaxed);
+    let pending_task = send_demo_addition.then_some(ProtocolTaskRequest {
+        version: TASK_VERSION,
+        id,
+        operation: OP_ADD,
+        left: 20,
+        right: 22,
+    });
     let (stop_tx, stop_rx) = oneshot::channel();
     let (startup_tx, startup_rx) = std::sync::mpsc::channel();
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
     let node_thread = thread::Builder::new()
         .name("decentralized-ai-p2p".to_owned())
         .spawn(move || {
@@ -57,9 +75,10 @@ fn start_managed_node(peer_address: Option<String>) -> Result<(i64, NodeInfo), S
             };
             if let Err(error) = runtime.block_on(run_node(
                 dial_address,
-                None,
+                pending_task,
                 Some(startup_tx),
                 Some(stop_rx),
+                Some(event_tx),
             )) {
                 eprintln!("p2p_node_failed={error}");
             }
@@ -74,7 +93,6 @@ fn start_managed_node(peer_address: Option<String>) -> Result<(i64, NodeInfo), S
             return Err(format!("node did not begin listening: {error}"));
         }
     };
-    let id = NEXT_NODE_ID.fetch_add(1, Ordering::Relaxed);
     let Ok(mut registry) = nodes().lock() else {
         let _ = stop_tx.send(());
         let _ = node_thread.join();
@@ -85,9 +103,36 @@ fn start_managed_node(peer_address: Option<String>) -> Result<(i64, NodeInfo), S
         ManagedNode {
             stop: stop_tx,
             thread: node_thread,
+            events: event_rx,
         },
     );
     Ok((id, info))
+}
+
+fn take_node_event(id: i64) -> String {
+    let Ok(mut registry) = nodes().lock() else {
+        return "error|node registry is unavailable".to_owned();
+    };
+    let Some(node) = registry.get_mut(&id) else {
+        return "error|node handle was not found".to_owned();
+    };
+    match node.events.try_recv() {
+        Ok(NodeEvent::PeerConnected(peer_id)) => format!("connected|{peer_id}"),
+        Ok(NodeEvent::PeerDisconnected(peer_id)) => format!("disconnected|{peer_id}"),
+        Ok(NodeEvent::ConnectionFailed(peer_id)) => {
+            format!("connection_failed|{}", peer_id.unwrap_or_default())
+        }
+        Ok(NodeEvent::TaskSent(id)) => format!("task_sent|{id}"),
+        Ok(NodeEvent::TaskFailed) => "task_failed".to_owned(),
+        Ok(NodeEvent::TaskReceived(id)) => format!("task_received|{id}"),
+        Ok(NodeEvent::TaskResponse { id, result, error }) => format!(
+            "task_response|{id}|{}|{}",
+            result.map(|value| value.to_string()).unwrap_or_default(),
+            error.map(|value| value.to_string()).unwrap_or_default()
+        ),
+        Err(std::sync::mpsc::TryRecvError::Empty) => String::new(),
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => "node_closed".to_owned(),
+    }
 }
 
 fn stop_managed_node(id: i64) -> bool {
@@ -139,17 +184,34 @@ pub fn start_node<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     peer_address: jni::objects::JString<'caller>,
+    send_demo_addition: jboolean,
 ) -> jstring {
     unowned_env
         .with_env(|env| -> jni::errors::Result<jstring> {
             let peer_address = peer_address.try_to_string(env)?;
-            let message = match start_managed_node(Some(peer_address)) {
+            let message = match start_managed_node(
+                Some(peer_address),
+                send_demo_addition != JNI_FALSE,
+            ) {
                 Ok((id, info)) => {
                     format!("ok|{id}|{}|{}", info.peer_id, info.listen_address)
                 }
                 Err(error) => format!("error|{error}"),
             };
             Ok(env.new_string(message)?.into_raw())
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[jni::jni_mangle("ai.decentralized.app.NativeTaskBridge")]
+pub fn poll_node_event<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    id: jlong,
+) -> jstring {
+    unowned_env
+        .with_env(|env| -> jni::errors::Result<jstring> {
+            Ok(env.new_string(take_node_event(id))?.into_raw())
         })
         .resolve::<ThrowRuntimeExAndDefault>()
 }

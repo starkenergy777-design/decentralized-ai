@@ -115,6 +115,7 @@ private fun ResourceSettingsScreen(
         mutableStateOf(preferences.getBoolean(ResourcePolicy.CHARGING_ONLY, true))
     }
     var peerAddress by remember { mutableStateOf("") }
+    var sendDemoAddition by remember { mutableStateOf(false) }
     val p2pState by p2pNodeState
 
     Column(
@@ -163,24 +164,46 @@ private fun ResourceSettingsScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            "მისამართი აიღეთ მეორე მოწყობილობიდან. პირდაპირი კავშირი მუშაობს მხოლოდ მაშინ, თუ ქსელი მოწყობილობებს ერთმანეთთან მისვლის საშუალებას აძლევს.",
+            "მიმღებ მოწყობილობაზე დატოვეთ მისამართი ცარიელი და გაუშვით კვანძი. გამგზავნზე ჩასვით მიმღების მისამართი და სურვილისამებრ მონიშნეთ 20 + 22 დემო ამოცანა. მოწყობილობებს პირდაპირი ქსელური კავშირი უნდა შეეძლოთ.",
             style = MaterialTheme.typography.bodySmall,
+        )
+        PolicySwitch(
+            title = "გაუგზავნე 20 + 22 დემო ამოცანა peer-ს",
+            checked = sendDemoAddition,
+            enabled = p2pState.phase != P2pNodePhase.RUNNING &&
+                p2pState.phase != P2pNodePhase.STARTING &&
+                p2pState.phase != P2pNodePhase.STOPPING,
+            onCheckedChange = { sendDemoAddition = it },
         )
         Button(
             onClick = {
                 if (p2pState.phase == P2pNodePhase.RUNNING) {
                     p2pNodeController.stop()
                 } else {
-                    p2pNodeController.start(wifiOnly, chargingOnly, cpuBudget > 0, peerAddress)
+                    p2pNodeController.start(
+                        wifiOnly,
+                        chargingOnly,
+                        cpuBudget > 0,
+                        peerAddress,
+                        sendDemoAddition,
+                    )
                 }
             },
             enabled = participating && cpuBudget > 0 && p2pState.phase != P2pNodePhase.STARTING &&
-                p2pState.phase != P2pNodePhase.STOPPING,
+                p2pState.phase != P2pNodePhase.STOPPING &&
+                (!sendDemoAddition || peerAddress.isNotBlank()),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (p2pState.phase == P2pNodePhase.RUNNING) "კვანძის გაჩერება" else "P2P კვანძის დაწყება")
         }
         Text(p2pState.message, style = MaterialTheme.typography.bodyMedium)
+        p2pState.connectedPeer?.let {
+            Text("დაკავშირებული peer: $it", style = MaterialTheme.typography.bodySmall)
+        }
+        p2pState.taskStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        p2pState.taskResult?.let {
+            Text("დისტანციური შედეგი: $it", style = MaterialTheme.typography.titleSmall)
+        }
         SelectionContainer {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 p2pState.peerId?.let {
@@ -290,6 +313,7 @@ private fun ResourceSettingsScreen(
 private fun PolicySwitch(
     title: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
@@ -298,7 +322,7 @@ private fun PolicySwitch(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(title, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 
