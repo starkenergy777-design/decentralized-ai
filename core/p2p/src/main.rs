@@ -9,8 +9,8 @@ use libp2p::{
 };
 
 pub use decentralized_ai_task_protocol::{
-    ERROR_OVERFLOW, ERROR_UNSUPPORTED_OPERATION, ERROR_UNSUPPORTED_VERSION, OP_ADD,
-    TASK_VERSION, TaskRequest, TaskResponse, execute_task,
+    ERROR_OVERFLOW, ERROR_UNSUPPORTED_OPERATION, ERROR_UNSUPPORTED_VERSION, OP_ADD, TASK_VERSION,
+    TaskRequest, TaskResponse, execute_task,
 };
 
 #[derive(NetworkBehaviour)]
